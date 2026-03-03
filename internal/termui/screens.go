@@ -67,6 +67,9 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 	ClearScreen()
 	PrintTunesdayHeader()
 	DrawBigWinner(winner)
+	// Keep the winner banner on screen briefly before proceeding,
+	// otherwise the next screen refresh would immediately overwrite it.
+	time.Sleep(2 * time.Second)
 	if data.Participants != nil {
 		data.Participants[winner]++
 	}
@@ -76,8 +79,7 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 // removed: RemoveYouTubeTracker moved to playlist.StripTrackingParams
 
 func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Scanner, providerName string, yt playlist.TitleProvider) {
-	ClearScreen()
-	PrintTunesdayHeader()
+	// Do not clear or redraw the header here to keep the Big Winner banner visible
 	fmt.Printf("Today's tune provider is: %s\n\n", providerName)
 	fmt.Println("Paste the tune link (YouTube https://…) or press Enter to cancel:")
 	fmt.Print("> ")
@@ -105,10 +107,37 @@ func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Sc
 	fmt.Println("Added:", title)
 }
 
-func AddTune(data *core.Data, scanner *bufio.Scanner) {
+func AddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanner) {
 	ClearScreen()
 	PrintTunesdayHeader()
 	fmt.Println("Manually add a tune to list")
+
+	// First, ask which participant to add the tune for
+	if len(data.Participants) == 0 {
+		fmt.Println("No participants available. Please add participants first.")
+		PressEnterToContinue()
+		return
+	}
+
+	names := make([]string, 0, len(data.Participants))
+	for n := range data.Participants {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+
+	sel := ShowMenu(ctx, "Select participant to add tune for", names)
+	switch sel {
+	case -1:
+		fmt.Println("Goodbye!")
+		os.Exit(0)
+	case -2:
+		return
+	}
+	participantName := names[sel]
+
+	ClearScreen()
+	PrintTunesdayHeader()
+	fmt.Printf("Adding tune for: %s\n\n", participantName)
 	fmt.Println("Paste the link (any), and the title shown in the list will be the URL host/path.")
 	fmt.Print("Link: ")
 	if !scanner.Scan() {
@@ -119,9 +148,16 @@ func AddTune(data *core.Data, scanner *bufio.Scanner) {
 		return
 	}
 	// keep only minimal info (no auto title)
-	t := core.Tune{Link: link, Provider: "manual", AddedAt: time.Now()}
+	t := core.Tune{Link: link, Provider: participantName, AddedAt: time.Now()}
 	data.Tunes = append(data.Tunes, t)
+
+	// Increment participant's tune count
+	if data.Participants != nil {
+		data.Participants[participantName]++
+	}
+
 	fmt.Println("Added.")
+	PressEnterToContinue()
 }
 
 func ListTunes(data *core.Data, scanner *bufio.Scanner) {
@@ -258,7 +294,15 @@ func ManageParticipants(ctx context.Context, data *core.Data, scanner *bufio.Sca
 				names = append(names, n)
 			}
 			sort.Strings(names)
-			sel := ShowMenu(ctx, "Select participant to toggle activation", names)
+			menuItems := make([]string, len(names))
+			for i, n := range names {
+				status := "activated"
+				if data.Disabled != nil && data.Disabled[n] {
+					status = "deactivated"
+				}
+				menuItems[i] = fmt.Sprintf("%s (%s)", n, status)
+			}
+			sel := ShowMenu(ctx, "Select participant to toggle activation", menuItems)
 			switch sel {
 			case -1:
 				fmt.Println("Goodbye!")
