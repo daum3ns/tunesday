@@ -102,12 +102,12 @@ func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Sc
 		fmt.Println("Failed to fetch title:", err)
 		return
 	}
-	t := core.Tune{Name: title, Link: raw, ID: id, Provider: "youtube", AddedAt: time.Now()}
+	t := core.Tune{Name: title, Link: raw, ID: id, Provider: providerName, AddedAt: time.Now()}
 	data.Tunes = append(data.Tunes, t)
 	fmt.Println("Added:", title)
 }
 
-func AddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanner) {
+func ManuallyAddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanner) {
 	ClearScreen()
 	PrintTunesdayHeader()
 	fmt.Println("Manually add a tune to list")
