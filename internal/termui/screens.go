@@ -70,9 +70,6 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 	// Keep the winner banner on screen briefly before proceeding,
 	// otherwise the next screen refresh would immediately overwrite it.
 	time.Sleep(2 * time.Second)
-	if data.Participants != nil {
-		data.Participants[winner]++
-	}
 	return winner
 }
 
@@ -104,6 +101,9 @@ func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Sc
 	}
 	t := core.Tune{Name: title, Link: raw, ID: id, Provider: providerName, AddedAt: time.Now()}
 	data.Tunes = append(data.Tunes, t)
+	if data.Participants != nil {
+		data.Participants[providerName]++
+	}
 	fmt.Println("Added:", title)
 }
 
