@@ -25,20 +25,35 @@ The tool evolved around our long-standing team tradition of celebrating Tunesday
    - Or plain Go: `go build -o build/tunesday ./cmd/tunesday`
 
 2) Run
-   - Default: ./build/tunesday
-   - Force run on a day-that-shall-not-be-named: ./build/tunesday --force-tunesday
-   - Radio mode: ./build/tunesday --radio ([not implemented yet ^^](https://github.com/daum3ns/tunesday/issues/1))
+    - Default: ./build/tunesday
+    - Force run on a day-that-shall-not-be-named: ./build/tunesday --force-tunesday
+    - Radio mode: ./build/tunesday --radio
 
 3) Keys inside the app
-   - KeyUp/KeyDown to move
-   - Enter to select
-   - Esc to go back/exit menu
-   - Ctrl-C to quit
+     - ↑/↓ to move
+     - Enter to select
+     - Esc to go back/exit menu
+     - Ctrl-C to quit
+
+4) Keys in Radio Mode
+     - Space: Pause/Resume playback
+     - ←/→: Previous/Next tune
+     - ↑/↓: Volume Up/Down
+     - Esc: Quit to menu
 
 ## Data & Configuration
 - Storage file: tunesday.json (in current working directory).
 - Change location with env var:
   - TUNESDAY_DATA_FILE=/path/to/wherever.json ./build/tunesday
+
+## Radio Mode Requirements
+To use the `--radio` flag, install these dependencies:
+- **mpv**: Terminal media player
+  - Ubuntu/Debian: `sudo apt install mpv`
+  - macOS: `brew install mpv`
+- **yt-dlp**: YouTube stream extractor (optional, mpv may use it internally)
+  - Ubuntu/Debian: `pip install yt-dlp`
+  - macOS: `brew install yt-dlp`
 
 ## What does it store?
 - Participants (with how many times they’ve provided tunes)
