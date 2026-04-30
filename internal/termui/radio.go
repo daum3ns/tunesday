@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"time"
 
 	"tunesday/internal/core"
 	"tunesday/internal/playback"
@@ -82,7 +83,22 @@ func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
 		return
 	}
 
+	uiUpdateChan := make(chan struct{}, 1)
+	player.SetOnTrackChange(func(idx int) {
+		select {
+		case uiUpdateChan <- struct{}{}:
+		default:
+		}
+	})
+	player.SetOnUpdate(func() {
+		select {
+		case uiUpdateChan <- struct{}{}:
+		default:
+		}
+	})
+
 	updateNowPlaying(player)
+	player.StartPolling(500 * time.Millisecond)
 
 	done := make(chan bool, 1)
 
@@ -90,6 +106,18 @@ func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
 	go func() {
 		player.Wait()
 		done <- true
+	}()
+
+	// Start UI update goroutine
+	go func() {
+		for {
+			select {
+			case <-uiUpdateChan:
+				updateNowPlaying(player)
+			case <-done:
+				return
+			}
+		}
 	}()
 
 	// Run keyboard listener in MAIN goroutine (not in goroutine)
@@ -117,9 +145,11 @@ func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
 			}
 			updateNowPlaying(player)
 		case keys.Esc:
+			player.StopPolling()
 			player.Stop()
 			return true, nil
 		case keys.CtrlC:
+			player.StopPolling()
 			player.Stop()
 			os.Exit(0)
 		}
@@ -137,6 +167,7 @@ func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
 		fmt.Printf("[KEYBOARD ERROR] %v\n", err)
 	}
 
+	player.StopPolling()
 	player.Stop()
 }
 
@@ -192,7 +223,22 @@ func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
 		return
 	}
 
+	uiUpdateChan := make(chan struct{}, 1)
+	player.SetOnTrackChange(func(idx int) {
+		select {
+		case uiUpdateChan <- struct{}{}:
+		default:
+		}
+	})
+	player.SetOnUpdate(func() {
+		select {
+		case uiUpdateChan <- struct{}{}:
+		default:
+		}
+	})
+
 	updateNowPlaying(player)
+	player.StartPolling(500 * time.Millisecond)
 
 	done := make(chan bool, 1)
 
@@ -200,6 +246,18 @@ func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
 	go func() {
 		player.Wait()
 		done <- true
+	}()
+
+	// Start UI update goroutine
+	go func() {
+		for {
+			select {
+			case <-uiUpdateChan:
+				updateNowPlaying(player)
+			case <-done:
+				return
+			}
+		}
 	}()
 
 	// Run keyboard listener in MAIN goroutine (not in goroutine)
@@ -227,9 +285,11 @@ func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
 			}
 			updateNowPlaying(player)
 		case keys.Esc:
+			player.StopPolling()
 			player.Stop()
 			return true, nil
 		case keys.CtrlC:
+			player.StopPolling()
 			player.Stop()
 			os.Exit(0)
 		}
@@ -247,6 +307,7 @@ func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
 		fmt.Printf("[KEYBOARD ERROR] %v\n", err)
 	}
 
+	player.StopPolling()
 	player.Stop()
 }
 
@@ -311,8 +372,38 @@ func updateNowPlaying(player *playback.Player) {
 	}
 
 	fmt.Printf("  Title: %s\n", title)
+
+	// Display playback position directly below title, blinking when paused
+	pos, errPos := player.GetTimePos()
+	dur, errDur := player.GetDuration()
+	if errPos == nil && errDur == nil && dur > 0 {
+		timeStr := fmt.Sprintf("%s / %s ", formatTime(pos), formatTime(dur))
+		// Calculate available width for progress bar
+		targetWidth := 65
+		barWidth := targetWidth - len(timeStr) - 2
+		if barWidth < 10 {
+			barWidth = 10
+		}
+		progress := int((pos / dur) * float64(barWidth))
+		if progress > barWidth {
+			progress = barWidth
+		}
+		if progress < 0 {
+			progress = 0
+		}
+		bar := "[" + strings.Repeat(">", progress) + strings.Repeat("-", barWidth-progress) + "]"
+
+		fullLine := "  " + timeStr + bar
+		if player.IsPaused() {
+			fmt.Printf("\x1b[5m%s\x1b[0m\n", fullLine)
+		} else {
+			fmt.Println(fullLine)
+		}
+	}
+
 	fmt.Printf("  Provider: %s on %s \n", current.Provider, current.AddedAt.Format("2006/01/02"))
 	fmt.Printf("  Volume: %d%% %s\n", player.GetVolume(), getVolumeBar(player.GetVolume()))
+	fmt.Println("")
 
 	if idx+1 < len(tunes) {
 		fmt.Printf("  Tune %d of %d\n", idx+1, len(tunes))
@@ -327,6 +418,12 @@ func updateNowPlaying(player *playback.Player) {
 	fmt.Println("")
 	fmt.Println("  [Space] Pause/Play    [↑/↓] Volume    [←/→] Songs")
 	fmt.Println("  [Esc] Quit to Menu    [Ctrl+C] Quit App")
+}
+
+func formatTime(seconds float64) string {
+	minutes := int(seconds) / 60
+	secs := int(seconds) % 60
+	return fmt.Sprintf("%d:%02d", minutes, secs)
 }
 
 func tuneDisplayName(t core.Tune) string {
