@@ -17,20 +17,25 @@ import (
 )
 
 type Player struct {
-	ctx           context.Context
-	cancel        context.CancelFunc
-	cmd           *exec.Cmd
-	socketPath    string
-	conn          net.Conn
-	mu            sync.Mutex
-	tunes         []core.Tune
-	currentIdx    int
-	paused        bool
-	debug         bool
-	volume        int
-	pollDone      chan struct{}
-	onTrackChange func(int)
-	onUpdate      func()
+	ctx            context.Context
+	cancel         context.CancelFunc
+	cmd            *exec.Cmd
+	socketPath     string
+	conn           net.Conn
+	mu             sync.Mutex
+	tunes          []core.Tune
+	currentIdx     int
+	paused         bool
+	debug          bool
+	volume         int
+	pollDone       chan struct{}
+	onTrackChange  func(int)
+	onUpdate       func()
+	lastPos        float64
+	lastDur        float64
+	cacheValid     bool
+	history        []core.Tune
+	lastHistoryIdx int
 }
 
 type ipcCommand struct {
@@ -47,13 +52,14 @@ func NewPlayer(tunes []core.Tune, debug ...bool) (*Player, error) {
 		d = debug[0]
 	}
 	return &Player{
-		ctx:        ctx,
-		cancel:     cancel,
-		tunes:      tunes,
-		currentIdx: 0,
-		paused:     false,
-		debug:      d,
-		volume:     100,
+		ctx:            ctx,
+		cancel:         cancel,
+		tunes:          tunes,
+		currentIdx:     0,
+		paused:         false,
+		debug:          d,
+		volume:         100,
+		lastHistoryIdx: -1,
 	}, nil
 }
 
@@ -312,8 +318,12 @@ func (p *Player) GetTimePos() (float64, error) {
 
 	switch v := data.(type) {
 	case float64:
+		p.lastPos = v
+		p.cacheValid = true
 		return v, nil
 	case int:
+		p.lastPos = float64(v)
+		p.cacheValid = true
 		return float64(v), nil
 	default:
 		return 0, fmt.Errorf("unexpected type for time-pos: %T", data)
@@ -331,12 +341,43 @@ func (p *Player) GetDuration() (float64, error) {
 
 	switch v := data.(type) {
 	case float64:
+		p.lastDur = v
+		p.cacheValid = true
 		return v, nil
 	case int:
+		p.lastDur = float64(v)
+		p.cacheValid = true
 		return float64(v), nil
 	default:
 		return 0, fmt.Errorf("unexpected type for duration: %T", data)
 	}
+}
+
+func (p *Player) GetCachedTimePos() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastPos
+}
+
+func (p *Player) GetCachedDuration() float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastDur
+}
+
+func (p *Player) IsCacheValid() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.cacheValid
+}
+
+func (p *Player) GetHistory() []core.Tune {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	// Return a copy to avoid race conditions
+	history := make([]core.Tune, len(p.history))
+	copy(history, p.history)
+	return history
 }
 
 func (p *Player) SetOnTrackChange(callback func(int)) {
@@ -345,6 +386,12 @@ func (p *Player) SetOnTrackChange(callback func(int)) {
 
 func (p *Player) SetOnUpdate(callback func()) {
 	p.onUpdate = callback
+}
+
+func (p *Player) TriggerUpdate() {
+	if p.onUpdate != nil {
+		p.onUpdate()
+	}
 }
 
 func (p *Player) StartPolling(interval time.Duration) {
@@ -358,12 +405,26 @@ func (p *Player) StartPolling(interval time.Duration) {
 			case <-p.pollDone:
 				return
 			case <-ticker.C:
+				// Always attempt to update cache regardless of playlist pos result
 				pos, err := p.GetPlaylistPos()
+
+				// Update position/duration cache
+				p.GetTimePos()
+				p.GetDuration()
+
 				if err != nil {
 					goto UPDATE
 				}
+
 				p.mu.Lock()
 				if pos != p.currentIdx {
+					// Only add to history if this index hasn't been added yet
+					if p.currentIdx != p.lastHistoryIdx {
+						if p.currentIdx >= 0 && p.currentIdx < len(p.tunes) {
+							p.history = append(p.history, p.tunes[p.currentIdx])
+							p.lastHistoryIdx = p.currentIdx
+						}
+					}
 					p.currentIdx = pos
 					if p.onTrackChange != nil {
 						p.onTrackChange(pos)

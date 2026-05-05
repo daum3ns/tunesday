@@ -125,25 +125,25 @@ func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
 		switch key.Code {
 		case keys.Space:
 			player.TogglePause()
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Left:
 			// Previous tune
 			player.Prev()
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Right:
 			// Next tune
 			player.Next()
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Up:
 			if err := player.VolumeUp(); err != nil {
 				fmt.Printf("[VOL] Error: %v\n", err)
 			}
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Down:
 			if err := player.VolumeDown(); err != nil {
 				fmt.Printf("[VOL] Error: %v\n", err)
 			}
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Esc:
 			player.StopPolling()
 			player.Stop()
@@ -265,25 +265,25 @@ func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
 		switch key.Code {
 		case keys.Space:
 			player.TogglePause()
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Left:
 			// Previous tune
 			player.Prev()
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Right:
 			// Next tune
 			player.Next()
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Up:
 			if err := player.VolumeUp(); err != nil {
 				fmt.Printf("[VOL] Error: %v\n", err)
 			}
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Down:
 			if err := player.VolumeDown(); err != nil {
 				fmt.Printf("[VOL] Error: %v\n", err)
 			}
-			updateNowPlaying(player)
+			player.TriggerUpdate()
 		case keys.Esc:
 			player.StopPolling()
 			player.Stop()
@@ -374,9 +374,9 @@ func updateNowPlaying(player *playback.Player) {
 	fmt.Printf("  Title: %s\n", title)
 
 	// Display playback position directly below title, blinking when paused
-	pos, errPos := player.GetTimePos()
-	dur, errDur := player.GetDuration()
-	if errPos == nil && errDur == nil && dur > 0 {
+	pos := player.GetCachedTimePos()
+	dur := player.GetCachedDuration()
+	if dur > 0 {
 		timeStr := fmt.Sprintf("%s / %s ", formatTime(pos), formatTime(dur))
 		// Calculate available width for progress bar
 		targetWidth := 65
@@ -418,6 +418,20 @@ func updateNowPlaying(player *playback.Player) {
 	fmt.Println("")
 	fmt.Println("  [Space] Pause/Play    [↑/↓] Volume    [←/→] Songs")
 	fmt.Println("  [Esc] Quit to Menu    [Ctrl+C] Quit App")
+
+	// Display playback history
+	history := player.GetHistory()
+	if len(history) > 0 {
+		fmt.Println("")
+		fmt.Println("  Played:")
+		for _, t := range history {
+			title := t.Name
+			if title == "" {
+				title = tuneDisplayName(t)
+			}
+			fmt.Printf("  - %s (%s)\n", title, t.Provider)
+		}
+	}
 }
 
 func formatTime(seconds float64) string {
