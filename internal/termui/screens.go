@@ -36,31 +36,56 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 		return ""
 	}
 
+	// Sort names for display
 	names := append([]string(nil), active...)
 	sort.Strings(names)
-	winner := names[rand.Intn(len(names))]
+
+	// Find the provider of the last submitted tune
+	lastSubmitter := ""
+	if len(data.Tunes) > 0 {
+		lastSubmitter = data.Tunes[len(data.Tunes)-1].Provider
+	}
+
+	// Calculate average tunes provided
+	totalTunes := 0
+	for _, count := range data.Participants {
+		totalTunes += count
+	}
+	avgTunes := float64(totalTunes) / float64(len(active))
+
+	// Calculate weights (matched to sorted names)
+	weights := make([]float64, len(names))
+	for i, name := range names {
+		tuneCount := data.Participants[name] // defaults to 0 if not in map
+		deficit := avgTunes - float64(tuneCount)
+		if deficit < 0 {
+			deficit = 0
+		}
+		weight := 1.0 + deficit // Base weight 1.0, bonus for being below average
+		if name == lastSubmitter {
+			weight *= 0.1 // Reduce weight for last submitter
+		}
+		weights[i] = weight
+	}
+
+	// Weighted random selection
+	winnerIdx := weightedRandom(weights)
+	winner := names[winnerIdx]
 
 	dur := time.Duration(1500+rand.Intn(1501)) * time.Millisecond
 	endAt := time.Now().Add(dur)
 	for time.Now().Before(endAt) {
 		ClearScreen()
 		PrintTunesdayHeader()
-		fmt.Println("Selecting today's provider…")
-		hi := rand.Intn(len(names))
+		fmt.Println("Selecting today's provider...")
+		hi := weightedRandom(weights) // Use weighted random for animation
 		drawNameList(names, hi)
 		time.Sleep(time.Duration(40+rand.Intn(61)) * time.Millisecond)
 	}
 
 	ClearScreen()
 	PrintTunesdayHeader()
-	fmt.Println("Selecting today's provider…")
-	winnerIdx := 0
-	for i, n := range names {
-		if n == winner {
-			winnerIdx = i
-			break
-		}
-	}
+	fmt.Println("Selecting today's provider...")
 	drawNameList(names, winnerIdx)
 	time.Sleep(1200 * time.Millisecond)
 
@@ -71,6 +96,22 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 	// otherwise the next screen refresh would immediately overwrite it.
 	time.Sleep(2 * time.Second)
 	return winner
+}
+
+func weightedRandom(weights []float64) int {
+	totalWeight := 0.0
+	for _, w := range weights {
+		totalWeight += w
+	}
+	r := rand.Float64() * totalWeight
+	cumWeight := 0.0
+	for i, w := range weights {
+		cumWeight += w
+		if cumWeight >= r {
+			return i
+		}
+	}
+	return len(weights) - 1 // fallback
 }
 
 // removed: RemoveYouTubeTracker moved to playlist.StripTrackingParams
