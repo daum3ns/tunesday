@@ -107,7 +107,7 @@ func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Sc
 	fmt.Println("Added:", title)
 }
 
-func ManuallyAddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanner) {
+func ManuallyAddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanner, yt playlist.TitleProvider) {
 	ClearScreen()
 	PrintTunesdayHeader()
 	fmt.Println("Manually add a tune to list")
@@ -138,7 +138,7 @@ func ManuallyAddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanne
 	ClearScreen()
 	PrintTunesdayHeader()
 	fmt.Printf("Adding tune for: %s\n\n", participantName)
-	fmt.Println("Paste the link (any), and the title shown in the list will be the URL host/path.")
+	fmt.Println("Paste the link (any URL), for YouTube links we'll try to fetch the title.")
 	fmt.Print("Link: ")
 	if !scanner.Scan() {
 		return
@@ -147,8 +147,35 @@ func ManuallyAddTune(ctx context.Context, data *core.Data, scanner *bufio.Scanne
 	if link == "" {
 		return
 	}
-	// keep only minimal info (no auto title)
-	t := core.Tune{Link: link, Provider: participantName, AddedAt: time.Now()}
+
+	// Try to fetch title if it's a YouTube link
+	var title string
+	var id string
+	if yt != nil {
+		id, _ = yt.NormalizeYouTubeID(link)
+		if id != "" {
+			fetchedTitle, err := yt.FetchTitle(ctx, id)
+			if err == nil {
+				title = fetchedTitle
+			} else {
+				fmt.Println("Failed to fetch title:", err)
+				fmt.Print("Enter title manually (or press Enter to use URL): ")
+				if scanner.Scan() {
+					manualTitle := strings.TrimSpace(scanner.Text())
+					if manualTitle != "" {
+						title = manualTitle
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: if no title, use URL display
+	if title == "" {
+		title = linkDisplay(link)
+	}
+
+	t := core.Tune{Name: title, Link: link, ID: id, Provider: participantName, AddedAt: time.Now()}
 	data.Tunes = append(data.Tunes, t)
 
 	// Increment participant's tune count

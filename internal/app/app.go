@@ -79,7 +79,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 				termui.PressEnterToContinue()
 			}
 		case 1: // Add tune
-			termui.ManuallyAddTune(ctx, data, scanner)
+			termui.ManuallyAddTune(ctx, data, scanner, a.yt)
 		case 2: // List tunes
 			termui.ListTunes(data, scanner)
 			termui.PressEnterToContinue()
