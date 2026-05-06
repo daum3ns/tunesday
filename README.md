@@ -18,16 +18,17 @@ The tool evolved around our long-standing team tradition of celebrating Tunesday
 - Fun little TUI: arrow keys to navigate, Enter to select, Esc/Ctrl-C to bail (it will still try to save).
 - Paste any YouTube link (watch, youtu.be, shorts) — the tool will normalize the ID and fetch the title.
 - Local-first: data is just a JSON file in your repo/home dir.
+- [Radio mode](#radio-mode): stream tunesday tunes in your command line.
 
 ## Quick Start
 1) Build
    - With Makefile: `make build`
    - Or plain Go: `go build -o build/tunesday ./cmd/tunesday`
 
-2) Run
-    - Default: ./build/tunesday
-    - Force run on a day-that-shall-not-be-named: ./build/tunesday --force-tunesday
-    - Radio mode: ./build/tunesday --radio
+ 2) Run
+     - Default: ./build/tunesday
+     - Force run on a day-that-shall-not-be-named: ./build/tunesday --force-tunesday
+     - Radio mode: ./build/tunesday --radio (plays tunes with live progress bar and history)
 
 3) Keys inside the app
      - ↑/↓ to move
@@ -35,29 +36,12 @@ The tool evolved around our long-standing team tradition of celebrating Tunesday
      - Esc to go back/exit menu
      - Ctrl-C to quit
 
-4) Keys in Radio Mode
-     - Space: Pause/Resume playback
-     - ←/→: Previous/Next tune
-     - ↑/↓: Volume Up/Down
-     - Esc: Quit to menu
-
-## Data & Configuration
-- Storage file: tunesday.json (in current working directory).
-- Change location with env var:
-  - TUNESDAY_DATA_FILE=/path/to/wherever.json ./build/tunesday
-
-## Radio Mode Requirements
-To use the `--radio` flag, install these dependencies:
-- **mpv**: Terminal media player
-  - Ubuntu/Debian: `sudo apt install mpv`
-  - macOS: `brew install mpv`
-- **yt-dlp**: YouTube stream extractor (optional, mpv may use it internally)
-  - Ubuntu/Debian: `pip install yt-dlp`
-  - macOS: `brew install yt-dlp`
-
-## What does it store?
-- Participants (with how many times they’ve provided tunes)
-- The list of tunes (title, link, normalized YouTube ID, provider, timestamp)
+ 4) Keys in Radio Mode
+      - Space: Pause/Resume playback
+      - ←/→: Previous/Next tune
+      - ↑/↓: Volume Up/Down
+      - Esc: Quit to menu
+      - Ctrl-C: Quit application
 
 ## Feature Tour (aka the menu)
 - Select todays tune provider: choose who’s on deck, paste a YouTube link, it will grab the title.
@@ -66,6 +50,41 @@ To use the `--radio` flag, install these dependencies:
 - Manage Tunesday participants: add/remove/disable/enable members.
 - Get youtube playlist link: a sharable link that bundles the IDs you’ve collected.
 - Exit: The tool will save on the way out. Promise.
+
+## Radio Mode
+
+### Using Radio Mode
+1. Start radio mode: `./build/tunesday --radio`
+2. Choose from:
+    - **Play all tunes (shuffled)**: Randomizes playlist order
+    - **Play all tunes (in order)**: Plays in original order
+    - **Select a tune to play**: Pick a specific track
+    - **Browse by provider**: Filter tunes by who added them
+
+### Radio Mode Requirements
+To use the `--radio` flag, install these dependencies:
+
+- **mpv**: Terminal media player
+    - https://github.com/mpv-player/mpv
+    - Ubuntu/Debian: `sudo apt install mpv`
+    - macOS: `brew install mpv`
+- **yt-dlp**: YouTube stream extractor (optional, mpv may use it internally)
+    - https://github.com/yt-dlp/yt-dlp
+    - Ubuntu/Debian: `pip install yt-dlp`
+    - macOS: `brew install yt-dlp`
+
+## Data & Configuration
+- Storage file: tunesday.json (in current working directory).
+- Change location with env var:
+   - TUNESDAY_DATA_FILE=/path/to/wherever.json ./build/tunesday
+- Example file: `example.tunesday.json` is provided in the repo. Copy it to get started:
+  ```bash
+  cp example.tunesday.json tunesday.json
+  ```
+### What does it store?
+- Participants (with how many times they’ve provided tunes)
+- The list of tunes (title, link, normalized YouTube ID, provider, timestamp)
+
 
 ## Tips & Tricks
 - Not Tuesday? Then enforce it with `--force-tunesday`. But don't abuse this!

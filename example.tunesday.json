@@ -1,0 +1,32 @@
+{
+  "participants": {
+    "Alice": 2,
+    "Bob": 1
+  },
+  "disabled": {
+    "Bob": false
+  },
+  "tunes": [
+    {
+      "name": "Queen - Don't Stop Me Now (Official Video)",
+      "link": "https://www.youtube.com/watch?v=HgzGwKwLmgM",
+      "id": "HgzGwKwLmgM",
+      "provider": "Alice",
+      "added_at": "2026-01-07T10:00:00+01:00"
+    },
+    {
+      "name": "Daft Punk - Get Lucky (Official Audio)",
+      "link": "https://www.youtube.com/watch?v=5NV6Rdv1a3I",
+      "id": "5NV6Rdv1a3I",
+      "provider": "Alice",
+      "added_at": "2026-01-14T10:00:00+01:00"
+    },
+    {
+      "name": "The Weeknd - Blinding Lights (Official Music Video)",
+      "link": "https://www.youtube.com/watch?v=fHI8X4OXluQ",
+      "id": "fHI8X4OXluQ",
+      "provider": "Bob",
+      "added_at": "2026-01-21T10:00:00+01:00"
+    }
+  ]
+}
