@@ -72,26 +72,37 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 	winnerIdx := weightedRandom(weights)
 	winner := names[winnerIdx]
 
-	dur := time.Duration(1500+rand.Intn(1501)) * time.Millisecond
+	dur := time.Duration(2500+rand.Intn(1501)) * time.Millisecond
 	endAt := time.Now().Add(dur)
 	for time.Now().Before(endAt) {
 		ClearScreen()
 		PrintTunesdayHeader()
 		fmt.Println("Selecting today's provider...")
 		hi := weightedRandom(weights) // Use weighted random for animation
-		drawNameList(names, hi)
+		drawNameList(names, hi, weights)
 		time.Sleep(time.Duration(40+rand.Intn(61)) * time.Millisecond)
 	}
 
 	ClearScreen()
 	PrintTunesdayHeader()
 	fmt.Println("Selecting today's provider...")
-	drawNameList(names, winnerIdx)
+	drawNameList(names, winnerIdx, weights)
 	time.Sleep(1200 * time.Millisecond)
 
 	ClearScreen()
 	PrintTunesdayHeader()
 	DrawBigWinner(winner)
+
+	// Show weight details
+	winnerWeight := weights[winnerIdx]
+	tuneCount := data.Participants[winner]
+	fmt.Printf("\n%s had weight %.1f\n", winner, winnerWeight)
+	fmt.Printf("(tunes: %d, average: %.1f", tuneCount, avgTunes)
+	if winner == lastSubmitter {
+		fmt.Print(", -90%% last submitter")
+	}
+	fmt.Println(")")
+
 	// Keep the winner banner on screen briefly before proceeding,
 	// otherwise the next screen refresh would immediately overwrite it.
 	time.Sleep(2 * time.Second)

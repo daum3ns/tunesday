@@ -44,12 +44,28 @@ The tool evolved around our long-standing team tradition of celebrating Tunesday
       - Ctrl-C: Quit application
 
 ## Feature Tour (aka the menu)
-- Select todays tune provider: choose who’s on deck, paste a YouTube link, it will grab the title.
+- Select today's tune provider: choose who's on deck, paste a YouTube link, it will grab the title.
 - Manually add a tune to list: type it in old-school.
 - Get complete list of tunes: list for bragging rights.
 - Manage Tunesday participants: add/remove/disable/enable members.
-- Get youtube playlist link: a sharable link that bundles the IDs you’ve collected.
+- Get youtube playlist link: a sharable link that bundles the IDs you've collected.
 - Exit: The tool will save on the way out. Promise.
+
+## Provider Selection
+
+Tunesday picks today's provider using **weighted random**: people with fewer tunes get higher chance!
+
+**Formula:** `weight = 1.0 + max(0, average - personTunes)`  
+**Penalty:** Last submitter gets -90% weight (avoids consecutive picks)
+
+**You'll see:**
+```
+  Alice   [█░░░░░░░░░] (1.0)
+▶ Bob     [██████████] (3.0)  ← 3x more likely!
+  Charlie  [█░░░░░░░░░] (1.0)
+```
+
+Over time, everyone provides roughly equal tunes! 🎵
 
 ## Radio Mode
 
