@@ -449,6 +449,7 @@ func (p *Player) StartPolling(interval time.Duration) {
 func (p *Player) StopPolling() {
 	if p.pollDone != nil {
 		close(p.pollDone)
+		p.pollDone = nil // Prevent double-close
 	}
 }
 
