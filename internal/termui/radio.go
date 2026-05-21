@@ -15,12 +15,7 @@ import (
 	"atomicgo.dev/keyboard/keys"
 )
 
-func RadioMenu(ctx context.Context, data *core.Data, debug ...bool) {
-	debugMode := false
-	if len(debug) > 0 {
-		debugMode = debug[0]
-	}
-
+func RadioMenu(ctx context.Context, data *core.Data) {
 	if len(data.Tunes) == 0 {
 		fmt.Println("No tunes available. Add some tunes first!")
 		PressEnterToContinue()
@@ -47,30 +42,25 @@ func RadioMenu(ctx context.Context, data *core.Data, debug ...bool) {
 			rand.Shuffle(len(tunes), func(i, j int) {
 				tunes[i], tunes[j] = tunes[j], tunes[i]
 			})
-			playTunes(ctx, tunes, debugMode)
+			playTunes(ctx, tunes)
 		case 1:
-			playTunes(ctx, data.Tunes, debugMode)
+			playTunes(ctx, data.Tunes)
 		case 2:
-			selectAndPlayTune(ctx, data.Tunes, debugMode)
+			selectAndPlayTune(ctx, data.Tunes)
 		case 3:
-			browseByProvider(ctx, data, debugMode)
+			browseByProvider(ctx, data)
 		case 4, -1, -2:
 			return
 		}
 	}
 }
 
-func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
-	debugMode := false
-	if len(debug) > 0 {
-		debugMode = debug[0]
-	}
-
+func playTunes(ctx context.Context, tunes []core.Tune) {
 	if len(tunes) == 0 {
 		return
 	}
 
-	player, err := playback.NewPlayer(tunes, debugMode)
+	player, err := playback.NewPlayer(tunes)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		PressEnterToContinue()
@@ -171,12 +161,7 @@ func playTunes(ctx context.Context, tunes []core.Tune, debug ...bool) {
 	player.Stop()
 }
 
-func selectAndPlayTune(ctx context.Context, tunes []core.Tune, debug ...bool) {
-	debugMode := false
-	if len(debug) > 0 {
-		debugMode = debug[0]
-	}
-
+func selectAndPlayTune(ctx context.Context, tunes []core.Tune) {
 	if len(tunes) == 0 {
 		return
 	}
@@ -200,17 +185,12 @@ func selectAndPlayTune(ctx context.Context, tunes []core.Tune, debug ...bool) {
 			return
 		}
 
-		playSingleTune(ctx, tunes[idx], debugMode)
+		playSingleTune(ctx, tunes[idx])
 	}
 }
 
-func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
-	debugMode := false
-	if len(debug) > 0 {
-		debugMode = debug[0]
-	}
-
-	player, err := playback.NewPlayer([]core.Tune{tune}, debugMode)
+func playSingleTune(ctx context.Context, tune core.Tune) {
+	player, err := playback.NewPlayer([]core.Tune{tune})
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
 		PressEnterToContinue()
@@ -311,12 +291,7 @@ func playSingleTune(ctx context.Context, tune core.Tune, debug ...bool) {
 	player.Stop()
 }
 
-func browseByProvider(ctx context.Context, data *core.Data, debug ...bool) {
-	debugMode := false
-	if len(debug) > 0 {
-		debugMode = debug[0]
-	}
-
+func browseByProvider(ctx context.Context, data *core.Data) {
 	providers := make([]string, 0, len(data.Participants))
 	for p := range data.Participants {
 		providers = append(providers, p)
@@ -346,7 +321,7 @@ func browseByProvider(ctx context.Context, data *core.Data, debug ...bool) {
 			continue
 		}
 
-		selectAndPlayTune(ctx, providerTunes, debugMode)
+		selectAndPlayTune(ctx, providerTunes)
 	}
 }
 

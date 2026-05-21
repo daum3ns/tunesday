@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -26,7 +25,6 @@ type Player struct {
 	tunes          []core.Tune
 	currentIdx     int
 	paused         bool
-	debug          bool
 	volume         int
 	pollDone       chan struct{}
 	onTrackChange  func(int)
@@ -42,22 +40,17 @@ type ipcCommand struct {
 	Command []interface{} `json:"command"`
 }
 
-func NewPlayer(tunes []core.Tune, debug ...bool) (*Player, error) {
+func NewPlayer(tunes []core.Tune) (*Player, error) {
 	if err := checkDeps(); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	d := false
-	if len(debug) > 0 {
-		d = debug[0]
-	}
 	return &Player{
 		ctx:            ctx,
 		cancel:         cancel,
 		tunes:          tunes,
 		currentIdx:     0,
 		paused:         false,
-		debug:          d,
 		volume:         100,
 		lastHistoryIdx: -1,
 	}, nil
@@ -79,18 +72,6 @@ func (p *Player) Start() error {
 		"--playlist=-",
 		"--no-terminal",
 		"--input-terminal=no",
-	}
-
-	// DEBUG MODE: Log what would be executed
-	if p.debug {
-		fmt.Println("[DEBUG] Would execute:")
-		fmt.Printf("[DEBUG]   Command: mpv %s\n", strings.Join(args, " "))
-		fmt.Println("[DEBUG]   URLs that would be piped to stdin:")
-		for _, t := range p.tunes {
-			fmt.Printf("[DEBUG]     - %s\n", t.Link)
-		}
-		fmt.Println("[DEBUG]   (Not actually starting mpv in debug mode)")
-		return nil
 	}
 
 	p.cmd = exec.CommandContext(p.ctx, "mpv", args...)
@@ -134,12 +115,6 @@ func (p *Player) connectIPC() error {
 }
 
 func (p *Player) sendCommand(command []interface{}) error {
-	// DEBUG MODE: Log the command instead of sending
-	if p.debug {
-		fmt.Printf("[DEBUG] Would send IPC command: %v\n", command)
-		return nil
-	}
-
 	// Note: Caller must hold p.mu.Lock()
 	if p.conn == nil {
 		if err := p.connectIPC(); err != nil {
@@ -168,10 +143,6 @@ type ipcResponse struct {
 }
 
 func (p *Player) queryProperty(property string) (interface{}, error) {
-	if p.debug {
-		return nil, fmt.Errorf("query not supported in debug mode")
-	}
-
 	if p.conn == nil {
 		if err := p.connectIPC(); err != nil {
 			return nil, err
@@ -256,12 +227,6 @@ func (p *Player) Prev() error {
 func (p *Player) Stop() {
 	p.cancel()
 
-	// DEBUG MODE: Just log
-	if p.debug {
-		fmt.Println("[DEBUG] Would stop mpv (not actually running)")
-		return
-	}
-
 	if p.conn != nil {
 		p.conn.Close()
 		p.conn = nil
@@ -270,12 +235,6 @@ func (p *Player) Stop() {
 }
 
 func (p *Player) Wait() error {
-	// DEBUG MODE: Wait for context cancellation instead of mpv process
-	if p.debug {
-		<-p.ctx.Done()
-		return nil
-	}
-	// If cmd is nil (shouldn't happen in non-debug mode), return nil
 	if p.cmd == nil {
 		return nil
 	}

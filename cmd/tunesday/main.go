@@ -16,13 +16,9 @@ func main() {
 	// quick flag parsing (minimal)
 	args := os.Args[1:]
 	radioMode := false
-	debugMode := false
 	for _, a := range args {
 		if a == "--radio" {
 			radioMode = true
-		}
-		if a == "--debug" {
-			debugMode = true
 		}
 	}
 
@@ -43,7 +39,7 @@ func main() {
 		}
 		termui.HideCursor()
 		defer termui.ShowCursor()
-		termui.RadioMenu(ctx, data, debugMode)
+		termui.RadioMenu(ctx, data)
 		return
 	}
 
