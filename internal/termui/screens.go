@@ -130,6 +130,10 @@ func weightedRandom(weights []float64) int {
 func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Scanner, providerName string, yt playlist.TitleProvider) {
 	// Do not clear or redraw the header here to keep the Big Winner banner visible
 	fmt.Printf("Today's tune provider is: %s\n\n", providerName)
+
+	// Show last N tunes from this provider to help avoid duplicates
+	printProviderHistory(data, providerName, 5)
+
 	fmt.Println("Paste the tune link (YouTube https://…) or press Enter to cancel:")
 	fmt.Print("> ")
 	if !scanner.Scan() {
@@ -404,6 +408,43 @@ func ManageParticipants(ctx context.Context, data *core.Data, scanner *bufio.Sca
 			return
 		}
 	}
+}
+
+func printProviderHistory(data *core.Data, provider string, n int) {
+	providerTunes := make([]core.Tune, 0)
+	for _, t := range data.Tunes {
+		if t.Provider == provider {
+			providerTunes = append(providerTunes, t)
+		}
+	}
+	if len(providerTunes) == 0 {
+		return
+	}
+
+	// Take last N, most recent first
+	if n > len(providerTunes) {
+		n = len(providerTunes)
+	}
+	recent := providerTunes[len(providerTunes)-n:]
+	fmt.Println(fmt.Sprintf("%s's previous tunes:", provider))
+	for i := len(recent) - 1; i >= 0; i-- {
+		t := recent[i]
+		title := t.Name
+		if title == "" {
+			title = linkDisplay(t.Link)
+		}
+		title = TruncateRunes(title, 55)
+		date := ""
+		if !t.AddedAt.IsZero() {
+			date = t.AddedAt.Format("2006-01-02")
+		}
+		if date != "" {
+			fmt.Printf("  %s (%s)\n", title, date)
+		} else {
+			fmt.Printf("  %s\n", title)
+		}
+	}
+	fmt.Println()
 }
 
 func PrintYouTubePlaylistLink(data *core.Data) {
