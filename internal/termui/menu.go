@@ -79,3 +79,73 @@ func ShowMenu(ctx context.Context, title string, items []string, headerFunc ...f
 		return idx
 	}
 }
+
+// ShowMultiSelect returns nil when the user cancelled (Ctrl-C or Esc),
+// or a []bool slice of the same length as items with the final checked state of each item.
+// Space toggles the currently selected item. Enter confirms.
+func ShowMultiSelect(ctx context.Context, title string, items []string, checked []bool, headerFunc ...func()) []bool {
+	selected := 0
+	finished := make(chan []bool, 1)
+
+	header := PrintTunesdayHeader
+	if len(headerFunc) > 0 && headerFunc[0] != nil {
+		header = headerFunc[0]
+	}
+
+	draw := func() {
+		ClearScreen()
+		header()
+		if title != "" {
+			fmt.Println(title)
+		}
+		for i, item := range items {
+			cursor := "  "
+			if i == selected {
+				cursor = "▶ "
+			}
+			mark := "[ ]"
+			if checked[i] {
+				mark = "[x]"
+			}
+			fmt.Printf("%s%s %s\n", cursor, mark, item)
+		}
+	}
+
+	draw()
+
+	_ = keyboard.Listen(func(key keys.Key) (bool, error) {
+		switch key.Code {
+		case keys.Up:
+			if selected > 0 {
+				selected--
+			}
+		case keys.Down:
+			if selected < len(items)-1 {
+				selected++
+			}
+		case keys.Space:
+			checked[selected] = !checked[selected]
+		case keys.Enter:
+			result := make([]bool, len(checked))
+			copy(result, checked)
+			finished <- result
+			return true, nil
+		case keys.CtrlC:
+			finished <- nil
+			return true, nil
+		case keys.Esc:
+			finished <- nil
+			return true, nil
+		}
+
+		draw()
+		return false, nil
+	})
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case result := <-finished:
+		return result
+	}
+}

@@ -46,10 +46,10 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 		lastSubmitter = data.Tunes[len(data.Tunes)-1].Provider
 	}
 
-	// Calculate average tunes provided
+	// Calculate average tunes provided (active participants only)
 	totalTunes := 0
-	for _, count := range data.Participants {
-		totalTunes += count
+	for _, name := range names {
+		totalTunes += data.Participants[name]
 	}
 	avgTunes := float64(totalTunes) / float64(len(active))
 
@@ -377,31 +377,29 @@ func ManageParticipants(ctx context.Context, data *core.Data, scanner *bufio.Sca
 				names = append(names, n)
 			}
 			sort.Strings(names)
-			menuItems := make([]string, len(names))
+			checked := make([]bool, len(names))
 			for i, n := range names {
-				status := "activated"
-				if data.Disabled != nil && data.Disabled[n] {
-					status = "deactivated"
-				}
-				menuItems[i] = fmt.Sprintf("%s (%s)", n, status)
+				checked[i] = data.Disabled == nil || !data.Disabled[n]
 			}
-			sel := ShowMenu(ctx, "Select participant to toggle activation", menuItems)
-			switch sel {
-			case -1:
-				fmt.Println("Goodbye!")
-				os.Exit(0)
-			case -2:
+			result := ShowMultiSelect(ctx, "Toggle activation (Space: toggle, Enter: confirm, Esc: cancel)", names, checked)
+			if result == nil {
 				continue
 			}
-			name := names[sel]
 			if data.Disabled == nil {
 				data.Disabled = make(map[string]bool)
 			}
-			data.Disabled[name] = !data.Disabled[name]
-			if data.Disabled[name] {
-				fmt.Printf("%s deactivated.\n", name)
-			} else {
-				fmt.Printf("%s activated.\n", name)
+			toggled := 0
+			for i, n := range names {
+				if !result[i] {
+					data.Disabled[n] = true
+					toggled++
+				} else {
+					delete(data.Disabled, n)
+					toggled++
+				}
+			}
+			if toggled > 0 {
+				fmt.Println("Activation updated.")
 			}
 			PressEnterToContinue()
 		case 4, -2:

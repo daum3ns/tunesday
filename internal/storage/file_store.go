@@ -28,9 +28,16 @@ func (fs *FileStore) Load(ctx context.Context) (*core.Data, error) {
 		return nil, err
 	}
 	// Recalculate participant counts from tunes to ensure data integrity
+	savedParticipants := d.Participants
 	d.Participants = make(map[string]int)
 	for _, tune := range d.Tunes {
 		d.Participants[tune.Provider]++
+	}
+	// Preserve participants that have 0 tunes (not represented in Tunes)
+	for name := range savedParticipants {
+		if _, ok := d.Participants[name]; !ok {
+			d.Participants[name] = 0
+		}
 	}
 	return &d, nil
 }
