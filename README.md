@@ -19,6 +19,7 @@ The tool evolved around our long-standing team tradition of celebrating Tunesday
 - Paste any YouTube link (watch, youtu.be, shorts) — the tool will normalize the ID and fetch the title.
 - Local-first: data is just a JSON file in your repo/home dir.
 - [Radio mode](#radio-mode): stream tunesday tunes in your command line.
+- [Guess the Provider Quiz](#quiz): test how well you know your teammates' music taste — in a browser.
 
 ## Quick Start
 1) Build
@@ -89,6 +90,27 @@ To use the `--radio` flag, install these dependencies:
     - Ubuntu/Debian: `pip install yt-dlp`
     - macOS: `brew install yt-dlp`
 
+## Quiz — Guess the Provider
+
+A browser-based quiz that plays 10-second YouTube snippets and challenges you to guess **which teammate submitted the tune** — before time runs out.
+
+**Game modes:** Quick Game (5 rounds), Game of Life, Universe and Everything (42), All tunes.
+
+### Run locally
+Place `tunesday.json` in the `docs/` folder and start a local server:
+```sh
+cp tunesday.json docs/
+python3 -m http.server 8080 -d docs
+```
+Open `http://localhost:8080/`
+
+### GitHub Pages
+Enable Pages on your repo (**Settings > Pages > Source: `/docs`**), copy `tunesday.json` into `docs/`, commit, and push. Share the link with your team.
+
+No API key needed — playback uses the YouTube IFrame API directly in the browser.
+
+The quiz is tunesday-locked — the ASCII art insists. Append `?force` to override the spacetime continuum.
+
 ## Data & Configuration
 - Storage file: tunesday.json (in current working directory).
 - Change location with env var:
@@ -133,6 +155,7 @@ To use the `--radio` flag, install these dependencies:
 - internal/storage: JSON file store (atomic saves)
 - internal/playlist: YouTube parsing + title fetcher
 - internal/core: simple data structs
+- docs/index.html: Guess the Provider quiz (standalone, browser-based)
 
 ### License
 - See LICENSE. Be nice, share tunes.
