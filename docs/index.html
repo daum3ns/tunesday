@@ -35,7 +35,8 @@
 
   /* Menu */
   #quiz-menu { text-align: center; }
-  #quiz-menu .title { font-size: 1.1em; margin-bottom: 0.75rem; display: block; }
+  #quiz-menu .title { font-size: 1.1em; margin-bottom: 0.75rem; margin-top: 0.75rem; display: block; }
+  #quiz-menu .title:first-child { margin-top: 0; }
   #quiz-menu .menu-btn {
     display: block;
     width: 100%;
@@ -105,16 +106,60 @@
   .loading { animation: blink 1s step-end infinite; }
   @keyframes blink { 50% { opacity: 0; } }
 
-  /* Player wrapper (visible during game) */
+  /* Playback */
+  #playback-ui { text-align: center; }
+  #playback-now-playing { margin-bottom: 0.25rem; }
+  #playback-details { opacity: 0.7; margin-bottom: 0.5rem; }
+  #playback-progress-container { margin-bottom: 0.5rem; }
+  #playback-progress-bar { color: #0f0; }
+  #playback-progress-time { margin-left: 0.4rem; }
+  #playback-controls { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.5rem; }
+  #playback-volume-controls { display: flex; justify-content: center; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+  #playback-vol-level { display: inline-block; min-width: 2.5em; text-align: center; }
+  .control-btn {
+    background: #000; color: #0f0; border: 1px solid #0f0;
+    padding: 0.4rem 0.75rem; font-family: inherit; font-size: 1em;
+    cursor: pointer; white-space: nowrap;
+  }
+  .control-btn:hover { background: #0f0; color: #000; }
+
+  /* Player wrapper (CRT terminal aesthetic) */
   #player-wrapper {
     width: 100%;
     max-width: 640px;
-    height: 250px;
     margin-top: 1rem;
-    overflow: hidden;
-    position: relative;
+    border: 2px solid #0f0;
+    box-shadow: 0 0 12px rgba(0,255,0,0.12);
+    background: #000;
   }
-  #player-wrapper iframe {
+  #player-terminal-header {
+    background: #0f0;
+    color: #000;
+    font-family: inherit;
+    font-size: 0.75em;
+    padding: 0.15rem 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  #player-inner {
+    position: relative;
+    overflow: hidden;
+    height: 250px;
+  }
+  #player-inner::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.4) 2px,
+      rgba(0,0,0,0.4) 4px
+    );
+    pointer-events: none;
+  }
+  #player-inner iframe {
     position: absolute;
     top: -42px;
     left: 0;
@@ -138,10 +183,33 @@
     <div id="quiz-answers"></div>
     <pre id="quiz-feedback" hidden></pre>
   </div>
+  <div id="playback-ui" hidden>
+    <pre id="playback-now-playing"></pre>
+    <pre id="playback-details"></pre>
+    <div id="playback-progress-container">
+      <span id="playback-progress-label">[</span><span id="playback-progress-bar"></span><span>]</span>
+      <span id="playback-progress-time"></span>
+    </div>
+    <div id="playback-controls">
+      <button class="control-btn" onclick="window.playbackEngine.prev()">[ ◀◀ Prev ]</button>
+      <button class="control-btn" id="playback-pause-btn" onclick="window.playbackEngine.togglePause()">[ ⏸ Pause ]</button>
+      <button class="control-btn" onclick="window.playbackEngine.next()">[ ▶▶ Next ]</button>
+      <button class="control-btn" onclick="window.playbackEngine.stop()">[ ■ Stop ]</button>
+    </div>
+    <div id="playback-volume-controls">
+      <button class="control-btn" onclick="window.playbackEngine.volDown()">[ Vol - ]</button>
+      <span id="playback-vol-level">100</span>
+      <button class="control-btn" onclick="window.playbackEngine.volUp()">[ Vol + ]</button>
+      <button class="control-btn" id="playback-mute-btn" onclick="window.playbackEngine.toggleMute()">[ Mute ]</button>
+    </div>
+  </div>
   <div id="quiz-end" hidden></div>
   <div id="quiz-error" hidden></div>
 </div>
-<div id="player-wrapper" hidden><div id="player"></div></div>
+<div id="player-wrapper" hidden>
+    <div id="player-terminal-header">tunesday.fm</div>
+    <div id="player-inner"><div id="player"></div></div>
+</div>
 <script>
 (function() {
   var SNIPPET_DURATION = 10;
@@ -168,6 +236,15 @@
   var elFeedback = $('quiz-feedback');
   var elPrompt   = $('quiz-prompt');
   var elPlayerW  = $('player-wrapper');
+  var elPlaybackUi = $('playback-ui');
+  var elPlaybackNowPlaying = $('playback-now-playing');
+  var elPlaybackDetails = $('playback-details');
+  var elPlaybackPauseBtn = $('playback-pause-btn');
+  var elPlaybackMuteBtn = $('playback-mute-btn');
+  var elPBVolLevel = $('playback-vol-level');
+  var elPBProgressBar = $('playback-progress-bar');
+  var elPBProgressTime = $('playback-progress-time');
+  var elPBProgressLabel = $('playback-progress-label');
 
   /* ── ASCII header (keep existing logic) ── */
   var isTuesday = new Date().getDay() === 2 || location.search.includes('force');
@@ -208,6 +285,7 @@
   var onLoadError = null;
   var loadTimeout = null;
   var roundTimedOut = false;
+  var playbackEngine = null;
 
   function setupPlayer(cb) {
     ytPlayer = new YT.Player('player', {
@@ -219,16 +297,33 @@
           cb();
         },
         onStateChange: function(ev) {
-          if (ev.data === YT.PlayerState.PLAYING && onVideoReady) {
-            onVideoReady();
-            onVideoReady = null;
+          if (ev.data === YT.PlayerState.PLAYING) {
+            if (playbackEngine && playbackEngine.active) {
+              playbackEngine.paused = false;
+              elPlaybackPauseBtn.textContent = '[ \u23F8 Pause ]';
+            }
+            if (onVideoReady) {
+              onVideoReady();
+              onVideoReady = null;
+            }
           }
           if (ev.data === YT.PlayerState.ENDED) {
-            ytPlayer.stopVideo();
+            if (playbackEngine && playbackEngine.active) {
+              playbackEngine.next();
+            } else {
+              ytPlayer.stopVideo();
+            }
           }
         },
         onError: function(ev) {
           console.warn('YT error on video:', ev);
+          if (playbackEngine && playbackEngine.active) {
+            if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
+            onVideoReady = null;
+            onLoadError = null;
+            playbackEngine.next();
+            return;
+          }
           if (onLoadError) {
             var cb = onLoadError;
             onLoadError = null;
@@ -241,7 +336,7 @@
     });
   }
 
-  function loadVideo(videoId, cb) {
+  function loadVideo(videoId, cb, playFull) {
     var settled = false;
     onLoadError = cb;
 
@@ -260,14 +355,16 @@
       if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
       onVideoReady = null;
       onLoadError = null;
-      var dur = ytPlayer.getDuration();
-      if (dur < MIN_VIDEO_DURATION) {
-        ytPlayer.stopVideo();
-        cb(new Error('Video too short'));
-        return;
+      if (!playFull) {
+        var dur = ytPlayer.getDuration();
+        if (dur < MIN_VIDEO_DURATION) {
+          ytPlayer.stopVideo();
+          cb(new Error('Video too short'));
+          return;
+        }
+        var start = Math.floor(dur * (0.10 + Math.random() * 0.70));
+        ytPlayer.seekTo(start);
       }
-      var start = Math.floor(dur * (0.10 + Math.random() * 0.70));
-      ytPlayer.seekTo(start);
       cb();
     };
 
@@ -517,23 +614,194 @@
     showMenu();
   };
 
+  /* ── PlaybackEngine ── */
+  function PlaybackEngine(tunes) {
+    this.tunes = tunes;
+    this.queue = [];
+    this.index = 0;
+    this.active = false;
+    this.paused = false;
+    this.progressTimer = null;
+    this.volume = 100;
+    this.muted = false;
+  }
+
+  PlaybackEngine.prototype.shuffleArr = function(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+    }
+    return a;
+  };
+
+  PlaybackEngine.prototype.formatTime = function(sec) {
+    var m = Math.floor(sec / 60);
+    var s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  };
+
+  PlaybackEngine.prototype.renderProgress = function() {
+    if (!this.active || !ytPlayer || typeof ytPlayer.getCurrentTime !== 'function') return;
+    var dur = ytPlayer.getDuration();
+    var cur = ytPlayer.getCurrentTime();
+    if (!dur || dur <= 0) {
+      elPBProgressBar.textContent = '';
+      elPBProgressTime.textContent = '';
+      return;
+    }
+    var steps = 20;
+    var pct = Math.max(0, Math.min(1, cur / dur));
+    var filled = Math.round(pct * steps);
+    var bar = '';
+    for (var i = 0; i < steps; i++) bar += i < filled ? '\u2588' : '\u2591';
+    elPBProgressBar.textContent = bar;
+    elPBProgressTime.textContent = ' ' + this.formatTime(cur) + ' / ' + this.formatTime(dur);
+  };
+
+  PlaybackEngine.prototype.startProgressTimer = function() {
+    var self = this;
+    if (this.progressTimer) clearInterval(this.progressTimer);
+    this.progressTimer = setInterval(function() { self.renderProgress(); }, 500);
+  };
+
+  PlaybackEngine.prototype.stopProgressTimer = function() {
+    if (this.progressTimer) { clearInterval(this.progressTimer); this.progressTimer = null; }
+  };
+
+  PlaybackEngine.prototype.updateVolumeDisplay = function() {
+    elPBVolLevel.textContent = this.muted ? 'MUTED' : String(this.volume);
+    elPlaybackMuteBtn.textContent = this.muted ? '[ Unmute ]' : '[ Mute ]';
+  };
+
+  PlaybackEngine.prototype.start = function(doShuffle) {
+    this.queue = doShuffle ? this.shuffleArr(this.tunes.slice()) : this.tunes.slice();
+    this.index = 0;
+    this.active = true;
+    this.paused = false;
+    if (ytPlayer && typeof ytPlayer.setVolume === 'function') {
+      ytPlayer.setVolume(this.volume);
+      if (this.muted) ytPlayer.mute(); else ytPlayer.unMute();
+    }
+    this.updateVolumeDisplay();
+    hideEl(elMenu); hideEl(elGame); hideEl(elEnd); hideEl(elError); hideEl(elLoading);
+    showEl(elPlaybackUi);
+    showEl(elPlayerW);
+    elPBProgressBar.textContent = '';
+    elPBProgressTime.textContent = '';
+    elPBProgressLabel.textContent = 'Loading... [';
+    this.playCurrent();
+  };
+
+  PlaybackEngine.prototype.playCurrent = function() {
+    var self = this;
+    var tune = this.queue[this.index];
+    this.renderNowPlaying(tune);
+    this.stopProgressTimer();
+    elPBProgressBar.textContent = '';
+    elPBProgressTime.textContent = '';
+    elPBProgressLabel.textContent = 'Loading... [';
+    loadVideo(tune.id, function(err) {
+      if (err) {
+        console.warn('Playback skip:', err.message);
+        self.next();
+      } else {
+        elPBProgressLabel.textContent = '[';
+        self.startProgressTimer();
+      }
+    }, true);
+  };
+
+  PlaybackEngine.prototype.renderNowPlaying = function(tune) {
+    var name = tune.name || 'Unknown track';
+    var provider = tune.provider || 'unknown';
+    var date = '';
+    if (tune.added_at) {
+      try { date = new Date(tune.added_at).toISOString().split('T')[0]; } catch(e) {}
+    }
+    elPlaybackNowPlaying.textContent = '\u25B6 ' + name;
+    elPlaybackDetails.textContent = 'submitted by ' + provider + (date ? ' \u00B7 ' + date : '');
+  };
+
+  PlaybackEngine.prototype.prev = function() {
+    if (this.queue.length === 0) return;
+    this.index = this.index > 0 ? this.index - 1 : this.queue.length - 1;
+    this.playCurrent();
+  };
+
+  PlaybackEngine.prototype.next = function() {
+    if (this.queue.length === 0) return;
+    this.index = this.index < this.queue.length - 1 ? this.index + 1 : 0;
+    this.playCurrent();
+  };
+
+  PlaybackEngine.prototype.togglePause = function() {
+    if (!this.active) return;
+    if (this.paused) {
+      ytPlayer.playVideo();
+      this.paused = false;
+      elPlaybackPauseBtn.textContent = '[ \u23F8 Pause ]';
+      this.startProgressTimer();
+    } else {
+      ytPlayer.pauseVideo();
+      this.paused = true;
+      elPlaybackPauseBtn.textContent = '[ \u25B6 Play  ]';
+      this.stopProgressTimer();
+    }
+  };
+
+  PlaybackEngine.prototype.volUp = function() {
+    if (!this.active) return;
+    this.volume = Math.min(100, this.volume + 10);
+    if (this.muted) { this.muted = false; if (ytPlayer) ytPlayer.unMute(); }
+    if (ytPlayer) ytPlayer.setVolume(this.volume);
+    this.updateVolumeDisplay();
+  };
+
+  PlaybackEngine.prototype.volDown = function() {
+    if (!this.active) return;
+    this.volume = Math.max(0, this.volume - 10);
+    if (this.muted) { this.muted = false; if (ytPlayer) ytPlayer.unMute(); }
+    if (ytPlayer) ytPlayer.setVolume(this.volume);
+    this.updateVolumeDisplay();
+  };
+
+  PlaybackEngine.prototype.toggleMute = function() {
+    if (!this.active) return;
+    this.muted = !this.muted;
+    if (ytPlayer) {
+      if (this.muted) ytPlayer.mute(); else ytPlayer.unMute();
+    }
+    this.updateVolumeDisplay();
+  };
+
+  PlaybackEngine.prototype.stop = function() {
+    this.active = false;
+    this.paused = false;
+    this.stopProgressTimer();
+    ytPlayer.stopVideo();
+    hideEl(elPlaybackUi);
+    hideEl(elPlayerW);
+    showMenu();
+  };
+
   /* ── UI helpers ── */
   function hideEl(el) { el.hidden = true; }
   function showEl(el) { el.hidden = false; }
 
   function showMenu() {
-    hideEl(elLoading); hideEl(elGame); hideEl(elEnd); hideEl(elError); hideEl(elPlayerW);
+    hideEl(elLoading); hideEl(elGame); hideEl(elEnd); hideEl(elError); hideEl(elPlayerW); hideEl(elPlaybackUi);
     showEl(elMenu);
   }
 
   function showGame() {
-    hideEl(elLoading); hideEl(elMenu); hideEl(elEnd); hideEl(elError);
+    hideEl(elLoading); hideEl(elMenu); hideEl(elEnd); hideEl(elError); hideEl(elPlaybackUi);
     showEl(elGame);
     showEl(elPlayerW);
   }
 
   function showError(msg) {
-    hideEl(elLoading); hideEl(elMenu); hideEl(elGame); hideEl(elEnd); hideEl(elPlayerW);
+    hideEl(elLoading); hideEl(elMenu); hideEl(elGame); hideEl(elEnd); hideEl(elPlayerW); hideEl(elPlaybackUi);
     showEl(elError);
     elError.innerHTML = '<pre>' + msg + '</pre>';
     var retry = document.createElement('button');
@@ -560,7 +828,7 @@
 
   function initQuiz() {
     elLoading.textContent = 'Loading tunesday data...';
-    showEl(elLoading); hideEl(elMenu); hideEl(elGame); hideEl(elEnd); hideEl(elError); hideEl(elPlayerW);
+    showEl(elLoading); hideEl(elMenu); hideEl(elGame); hideEl(elEnd); hideEl(elError); hideEl(elPlayerW); hideEl(elPlaybackUi);
 
     fetch(dataPath + (dataPath.indexOf('?') === -1 ? '?_=' + Date.now() : '&_=' + Date.now()))
       .then(function(r) {
@@ -618,12 +886,17 @@
     var available = tunes.filter(function(t) { return t.id && t.id.length >= 10 && t.provider; });
     var total = available.length;
 
+    playbackEngine = window.playbackEngine = new PlaybackEngine(available);
+
     elMenu.innerHTML =
       '<span class="title mono">GUESS THE PROVIDER</span>' +
       '<span class="mono">' + tunes.length + ' tunes from ' + providers.length + ' provider' + (providers.length !== 1 ? 's' : '') + '</span>' +
       '<button class="menu-btn" onclick="engine.startGame(5)">[ Quick Game (5) ]</button>' +
       '<button class="menu-btn" onclick="engine.startGame(42)"' + (total < 42 ? ' title="Only ' + total + ' tunes available"' : '') + '>[ Life, Universe &amp; Everything (42) ]</button>' +
-      '<button class="menu-btn" onclick="engine.startGame(0)">[ All (' + total + ' tunes)  ]</button>';
+      '<button class="menu-btn" onclick="engine.startGame(0)">[ All (' + total + ' tunes)  ]</button>' +
+      '<span class="title mono">PLAYBACK</span>' +
+      '<button class="menu-btn" onclick="window.playbackEngine.start(true)">[ Shuffle All              ]</button>' +
+      '<button class="menu-btn" onclick="window.playbackEngine.start(false)">[ Play In Order            ]</button>';
   }
 
   /* ── Bootstrap ── */
