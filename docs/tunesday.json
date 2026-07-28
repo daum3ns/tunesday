@@ -1,25 +1,26 @@
 {
   "participants": {
-    "Alain": 6,
+    "Alain": 7,
     "Armin": 5,
     "Danilo": 2,
     "Diego": 6,
     "Dominik": 9,
     "Hussein": 4,
-    "Josip": 3,
+    "Josip": 6,
     "Lukas": 4,
     "Marcel": 9,
     "Nicu": 5,
-    "Rolf": 8,
+    "Rolf": 9,
     "Sandro": 5,
     "Schumi": 7,
-    "Vitaly": 5
+    "Vitaly": 6
   },
   "disabled": {
     "Danilo": true,
-    "Sandro": true,
-    "Schumi": true,
-    "Vitaly": true
+    "Diego": true,
+    "Hussein": true,
+    "Rolf": true,
+    "Sandro": true
   },
   "tunes": [
     {
@@ -567,6 +568,48 @@
       "id": "3KS02q0BUnY",
       "provider": "Marcel",
       "added_at": "2024-09-17T14:43:00.434314857+02:00"
+    },
+    {
+      "name": "Karma",
+      "link": "https://www.youtube.com/watch?v=PZ7IBT0aWNs",
+      "id": "PZ7IBT0aWNs",
+      "provider": "Josip",
+      "added_at": "2026-07-01T10:00:37.352241024+02:00"
+    },
+    {
+      "name": "Helene Fischer, Tom Jones - Sexbomb (Live - Die Helene Fischer Show)",
+      "link": "https://www.youtube.com/watch?v=-MZrgXR75Tk",
+      "id": "-MZrgXR75Tk",
+      "provider": "Alain",
+      "added_at": "2026-07-14T10:08:50.946035794+02:00"
+    },
+    {
+      "name": "Groove Came First",
+      "link": "https://www.youtube.com/watch?v=5cTozQoAYtY",
+      "id": "5cTozQoAYtY",
+      "provider": "Rolf",
+      "added_at": "2026-07-07T09:30:43.544946656+02:00"
+    },
+    {
+      "name": "The Roots - The Seed (2.0) (320kbps) (feat. Cody ChesnuTT)",
+      "link": "https://www.youtube.com/watch?v=XfQzll6ggCw",
+      "id": "XfQzll6ggCw",
+      "provider": "Josip",
+      "added_at": "2026-04-14T10:30:21.725437719+02:00"
+    },
+    {
+      "name": "AURORA - Runaway",
+      "link": "https://www.youtube.com/watch?v=d_HlPboLRL8",
+      "id": "d_HlPboLRL8",
+      "provider": "Josip",
+      "added_at": "2026-07-22T09:34:15.225888657+02:00"
+    },
+    {
+      "name": "The Dead South - In Hell I'll Be In Good Company [Official Music Video]",
+      "link": "https://youtu.be/B9FzVhw8_bY",
+      "id": "B9FzVhw8_bY",
+      "provider": "Vitaly",
+      "added_at": "2026-07-28T10:16:01.469841048+02:00"
     }
   ]
 }
