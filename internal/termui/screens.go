@@ -132,7 +132,7 @@ func AddTuneWithProvider(ctx context.Context, data *core.Data, scanner *bufio.Sc
 	fmt.Printf("Today's tune provider is: %s\n\n", providerName)
 
 	// Show last N tunes from this provider to help avoid duplicates
-	printProviderHistory(data, providerName, 5)
+	printProviderHistory(data, providerName, 0)
 
 	fmt.Println("Paste the tune link (YouTube https://…) or press Enter to cancel:")
 	fmt.Print("> ")
@@ -419,14 +419,13 @@ func printProviderHistory(data *core.Data, provider string, n int) {
 		return
 	}
 
-	// Take last N, most recent first
-	if n > len(providerTunes) {
-		n = len(providerTunes)
+	// Take last N, most recent first; n <= 0 means show all
+	if n > 0 && n < len(providerTunes) {
+		providerTunes = providerTunes[len(providerTunes)-n:]
 	}
-	recent := providerTunes[len(providerTunes)-n:]
 	fmt.Println(fmt.Sprintf("%s's previous tunes:", provider))
-	for i := len(recent) - 1; i >= 0; i-- {
-		t := recent[i]
+	for i := len(providerTunes) - 1; i >= 0; i-- {
+		t := providerTunes[i]
 		title := t.Name
 		if title == "" {
 			title = linkDisplay(t.Link)
