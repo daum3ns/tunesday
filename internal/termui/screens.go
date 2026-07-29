@@ -14,6 +14,90 @@ import (
 	"tunesday/internal/playlist"
 )
 
+type providerSelection struct {
+	active []string // all active participants, sorted alphabetically
+	pool   []string // eligible pool, sorted alphabetically
+	winner string
+}
+
+// selectProvider picks a provider using a bottom-half pool rule:
+//   - active participants are sorted by tune count ascending
+//   - the bottom ceil(activeCount/2) providers form the base pool
+//   - ties at the cutoff count are included
+//   - the most recent submitter is removed from the pool when possible
+//   - a winner is picked uniformly at random from the remaining pool
+//
+// The rand source is injected so the selection is testable.
+func selectProvider(data *core.Data, r *rand.Rand) providerSelection {
+	active := make([]string, 0, len(data.Participants))
+	for name := range data.Participants {
+		if data.Disabled != nil && data.Disabled[name] {
+			continue
+		}
+		active = append(active, name)
+	}
+	sort.Strings(active)
+
+	if len(active) == 0 {
+		return providerSelection{}
+	}
+
+	// Sort by tune count to find the bottom half.
+	byCount := append([]string(nil), active...)
+	sort.SliceStable(byCount, func(i, j int) bool {
+		return data.Participants[byCount[i]] < data.Participants[byCount[j]]
+	})
+
+	n := (len(byCount) + 1) / 2 // ceil(activeCount / 2)
+	if n < 2 {
+		n = 2
+	}
+	if n > len(byCount) {
+		n = len(byCount)
+	}
+
+	// Include ties at the cutoff count.
+	cutoff := data.Participants[byCount[n-1]]
+	pool := make([]string, 0)
+	for _, name := range byCount {
+		if data.Participants[name] <= cutoff {
+			pool = append(pool, name)
+		}
+	}
+	sort.Strings(pool)
+
+	// Exclude the last submitter when there is another eligible provider.
+	// Use the most recent AddedAt timestamp rather than array order so the
+	// selection stays correct even if the tunes slice is reordered.
+	lastSubmitter := ""
+	var lastTime time.Time
+	for _, tune := range data.Tunes {
+		if tune.AddedAt.After(lastTime) {
+			lastTime = tune.AddedAt
+			lastSubmitter = tune.Provider
+		}
+	}
+	if len(pool) > 1 && lastSubmitter != "" {
+		filtered := make([]string, 0, len(pool))
+		for _, name := range pool {
+			if name != lastSubmitter {
+				filtered = append(filtered, name)
+			}
+		}
+		if len(filtered) > 0 {
+			pool = filtered
+		}
+	}
+
+	winner := pool[r.Intn(len(pool))]
+
+	return providerSelection{
+		active: active,
+		pool:   pool,
+		winner: winner,
+	}
+}
+
 func SelectProvider(ctx context.Context, data *core.Data) string {
 	ClearScreen()
 	PrintTunesdayHeader()
@@ -36,93 +120,56 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 		return ""
 	}
 
-	// Sort names for display
-	names := append([]string(nil), active...)
-	sort.Strings(names)
-
-	// Find the provider of the last submitted tune
-	lastSubmitter := ""
-	if len(data.Tunes) > 0 {
-		lastSubmitter = data.Tunes[len(data.Tunes)-1].Provider
+	if ctx.Err() != nil {
+		return ""
 	}
 
-	// Calculate average tunes provided (active participants only)
-	totalTunes := 0
-	for _, name := range names {
-		totalTunes += data.Participants[name]
-	}
-	avgTunes := float64(totalTunes) / float64(len(active))
+	sel := selectProvider(data, rand.New(rand.NewSource(rand.Int63())))
+	names := sel.active
+	pool := sel.pool
+	winner := sel.winner
 
-	// Calculate weights (matched to sorted names)
-	weights := make([]float64, len(names))
-	for i, name := range names {
-		tuneCount := data.Participants[name] // defaults to 0 if not in map
-		deficit := avgTunes - float64(tuneCount)
-		if deficit < 0 {
-			deficit = 0
+	indexOf := func(name string) int {
+		for i, n := range names {
+			if n == name {
+				return i
+			}
 		}
-		weight := 1.0 + deficit // Base weight 1.0, bonus for being below average
-		if name == lastSubmitter {
-			weight *= 0.1 // Reduce weight for last submitter
-		}
-		weights[i] = weight
+		return 0
 	}
-
-	// Weighted random selection
-	winnerIdx := weightedRandom(weights)
-	winner := names[winnerIdx]
+	winnerIdx := indexOf(winner)
 
 	dur := time.Duration(2500+rand.Intn(1501)) * time.Millisecond
 	endAt := time.Now().Add(dur)
 	for time.Now().Before(endAt) {
+		if ctx.Err() != nil {
+			return ""
+		}
 		ClearScreen()
 		PrintTunesdayHeader()
 		fmt.Println("Selecting today's provider...")
-		hi := weightedRandom(weights) // Use weighted random for animation
-		drawNameList(names, hi, weights)
+		hiName := pool[rand.Intn(len(pool))]
+		drawNameList(names, indexOf(hiName))
 		time.Sleep(time.Duration(40+rand.Intn(61)) * time.Millisecond)
 	}
 
 	ClearScreen()
 	PrintTunesdayHeader()
 	fmt.Println("Selecting today's provider...")
-	drawNameList(names, winnerIdx, weights)
+	drawNameList(names, winnerIdx)
 	time.Sleep(1200 * time.Millisecond)
 
 	ClearScreen()
 	PrintTunesdayHeader()
 	DrawBigWinner(winner)
 
-	// Show weight details
-	winnerWeight := weights[winnerIdx]
-	tuneCount := data.Participants[winner]
-	fmt.Printf("\n%s had weight %.1f\n", winner, winnerWeight)
-	fmt.Printf("(tunes: %d, average: %.1f", tuneCount, avgTunes)
-	if winner == lastSubmitter {
-		fmt.Print(", -90%% last submitter")
-	}
-	fmt.Println(")")
+	fmt.Printf("\n%s is today's provider!\n", winner)
+	fmt.Printf("(pool: %d of %d active participants)\n", len(pool), len(names))
 
 	// Keep the winner banner on screen briefly before proceeding,
 	// otherwise the next screen refresh would immediately overwrite it.
 	time.Sleep(2 * time.Second)
 	return winner
-}
-
-func weightedRandom(weights []float64) int {
-	totalWeight := 0.0
-	for _, w := range weights {
-		totalWeight += w
-	}
-	r := rand.Float64() * totalWeight
-	cumWeight := 0.0
-	for i, w := range weights {
-		cumWeight += w
-		if cumWeight >= r {
-			return i
-		}
-	}
-	return len(weights) - 1 // fallback
 }
 
 // removed: RemoveYouTubeTracker moved to playlist.StripTrackingParams
