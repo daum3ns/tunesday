@@ -1,0 +1,3 @@
+tunesday.fm {
+    reverse_proxy tunesday:8080
+}

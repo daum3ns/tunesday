@@ -1,0 +1,37 @@
+services:
+  tunesday:
+    build:
+      context: ..
+      dockerfile: tunesday.fm/Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - TUNESDAY_FM_DATA_DIR=/data
+      - TUNESDAY_FM_LISTEN_ADDR=:8080
+      - TUNESDAY_FM_BASE_URL=${TUNESDAY_FM_BASE_URL}
+      - TUNESDAY_FM_SESSION_SECRET=${TUNESDAY_FM_SESSION_SECRET}
+      - TUNESDAY_FM_SESSION_SECURE=${TUNESDAY_FM_SESSION_SECURE:-true}
+      - TUNESDAY_FM_BCRYPT_COST=${TUNESDAY_FM_BCRYPT_COST:-10}
+      - TUNESDAY_FM_SMTP_HOST=${TUNESDAY_FM_SMTP_HOST}
+      - TUNESDAY_FM_SMTP_PORT=${TUNESDAY_FM_SMTP_PORT:-587}
+      - TUNESDAY_FM_SMTP_USER=${TUNESDAY_FM_SMTP_USER}
+      - TUNESDAY_FM_SMTP_PASS=${TUNESDAY_FM_SMTP_PASS}
+      - TUNESDAY_FM_SMTP_FROM=${TUNESDAY_FM_SMTP_FROM:-noreply@tunesday.fm}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
