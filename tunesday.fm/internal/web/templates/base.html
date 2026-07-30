@@ -9,7 +9,12 @@
 <body>
     <pre id="header">{{.Header}}</pre>
     <main>
-        {{template "content" .}}
+        <div class="terminal-box">
+            {{if .Message}}
+            <p class="terminal-message">{{.Message}}</p>
+            {{end}}
+            {{template "content" .}}
+        </div>
     </main>
 </body>
 </html>

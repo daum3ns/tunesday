@@ -1,0 +1,14 @@
+{{define "content"}}
+<h2>Register</h2>
+<p>Create an admin account for your team.</p>
+<form method="POST" action="/register">
+    <label>Email</label>
+    <input type="email" name="email" required>
+    <label>Password</label>
+    <input type="password" name="password" required>
+    <label>Confirm password</label>
+    <input type="password" name="password_confirm" required>
+    <button type="submit" class="terminal-btn">Create account</button>
+</form>
+<p>Already have an account? <a href="/login">Login</a></p>
+{{end}}
