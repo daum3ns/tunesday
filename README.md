@@ -54,17 +54,16 @@ The tool evolved around our long-standing team tradition of celebrating Tunesday
 
 ## Provider Selection
 
-Tunesday picks today's provider using **weighted random**: people with fewer tunes get higher chance!
+Tunesday picks today's provider from a **bottom-half pool**: the providers with the fewest tunes are eligible, and one is chosen at random.
 
-**Formula:** `weight = 1.0 + max(0, average - personTunes)`  
-**Penalty:** Last submitter gets -90% weight (avoids consecutive picks)
+**Rules:**
+- Build the pool from the bottom `ceil(activeCount / 2)` providers by tune count.
+- Ties at the cutoff count are included.
+- The most recent submitter (by `added_at` timestamp) is excluded from the pool when possible.
+- A winner is picked uniformly at random from the remaining pool.
 
-**You'll see:**
-```
-  Alice   [█░░░░░░░░░] (1.0)
-▶ Bob     [██████████] (3.0)  ← 3x more likely!
-  Charlie  [█░░░░░░░░░] (1.0)
-```
+**Example:**  
+With 6 active participants and tune counts `[0, 1, 2, 5, 7, 10]`, the pool is the bottom 3 (`0, 1, 2`). One of those three is picked at random.
 
 Over time, everyone provides roughly equal tunes! 🎵
 
