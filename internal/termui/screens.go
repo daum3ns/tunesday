@@ -14,90 +14,6 @@ import (
 	"tunesday/internal/playlist"
 )
 
-type providerSelection struct {
-	active []string // all active participants, sorted alphabetically
-	pool   []string // eligible pool, sorted alphabetically
-	winner string
-}
-
-// selectProvider picks a provider using a bottom-half pool rule:
-//   - active participants are sorted by tune count ascending
-//   - the bottom ceil(activeCount/2) providers form the base pool
-//   - ties at the cutoff count are included
-//   - the most recent submitter is removed from the pool when possible
-//   - a winner is picked uniformly at random from the remaining pool
-//
-// The rand source is injected so the selection is testable.
-func selectProvider(data *core.Data, r *rand.Rand) providerSelection {
-	active := make([]string, 0, len(data.Participants))
-	for name := range data.Participants {
-		if data.Disabled != nil && data.Disabled[name] {
-			continue
-		}
-		active = append(active, name)
-	}
-	sort.Strings(active)
-
-	if len(active) == 0 {
-		return providerSelection{}
-	}
-
-	// Sort by tune count to find the bottom half.
-	byCount := append([]string(nil), active...)
-	sort.SliceStable(byCount, func(i, j int) bool {
-		return data.Participants[byCount[i]] < data.Participants[byCount[j]]
-	})
-
-	n := (len(byCount) + 1) / 2 // ceil(activeCount / 2)
-	if n < 2 {
-		n = 2
-	}
-	if n > len(byCount) {
-		n = len(byCount)
-	}
-
-	// Include ties at the cutoff count.
-	cutoff := data.Participants[byCount[n-1]]
-	pool := make([]string, 0)
-	for _, name := range byCount {
-		if data.Participants[name] <= cutoff {
-			pool = append(pool, name)
-		}
-	}
-	sort.Strings(pool)
-
-	// Exclude the last submitter when there is another eligible provider.
-	// Use the most recent AddedAt timestamp rather than array order so the
-	// selection stays correct even if the tunes slice is reordered.
-	lastSubmitter := ""
-	var lastTime time.Time
-	for _, tune := range data.Tunes {
-		if tune.AddedAt.After(lastTime) {
-			lastTime = tune.AddedAt
-			lastSubmitter = tune.Provider
-		}
-	}
-	if len(pool) > 1 && lastSubmitter != "" {
-		filtered := make([]string, 0, len(pool))
-		for _, name := range pool {
-			if name != lastSubmitter {
-				filtered = append(filtered, name)
-			}
-		}
-		if len(filtered) > 0 {
-			pool = filtered
-		}
-	}
-
-	winner := pool[r.Intn(len(pool))]
-
-	return providerSelection{
-		active: active,
-		pool:   pool,
-		winner: winner,
-	}
-}
-
 func SelectProvider(ctx context.Context, data *core.Data) string {
 	ClearScreen()
 	PrintTunesdayHeader()
@@ -124,10 +40,10 @@ func SelectProvider(ctx context.Context, data *core.Data) string {
 		return ""
 	}
 
-	sel := selectProvider(data, rand.New(rand.NewSource(rand.Int63())))
-	names := sel.active
-	pool := sel.pool
-	winner := sel.winner
+	sel := core.SelectProviderFromData(data, rand.New(rand.NewSource(rand.Int63())))
+	names := sel.Active
+	pool := sel.Pool
+	winner := sel.Winner
 
 	indexOf := func(name string) int {
 		for i, n := range names {
