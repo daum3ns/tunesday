@@ -63,7 +63,7 @@ func TestReplaceTeamSwapsDataKeepsStructure(t *testing.T) {
 	if err := cers.Create(cer); err != nil {
 		t.Fatal(err)
 	}
-	if err := cers.RecordReveal(cer.ID, rolf.ID); err != nil {
+	if err := cers.RecordReveal(cer.ID, 42, []string{"Rolf"}, rolf.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := invites.Create(&store.Invitation{

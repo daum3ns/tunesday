@@ -44,7 +44,7 @@
 
     function handleMessage(msg) {
         if (msg.type === "state") applyState(msg.payload);
-        else if (msg.type === "attendees") renderAttendees(msg.payload.attendees);
+        else if (msg.type === "attendees") onAttendees(msg.payload);
         else if (msg.type === "reveal") runRoulette(msg.payload);
         else if (msg.type === "complete") showCompleted(msg.payload);
     }
@@ -55,12 +55,8 @@
             if (st.attendees[i].isYou) myProvider = st.attendees[i].provider;
         }
         if (st.status === "open") {
-            statusEl.textContent = "the turntable hums, waiting for the needle…";
-            if (revealBtn) {
-                revealBtn.disabled = true;
-                revealBtn.textContent = "⬇ Drop the Needle";
-            }
-            if (st.canReveal === false && revealBtn) hostHint.textContent = "the needle has already dropped";
+            if (revealBtn) setRevealEnabled(!!st.canReveal);
+            statusEl.textContent = roomMessage(st.inRoom || 0, st.poolPreview);
         } else {
             revealed = true;
             winnerZone.hidden = false;
@@ -74,37 +70,53 @@
         }
     }
 
+    function roomMessage(inRoom, pool) {
+        var base = inRoom + " in the room";
+        if (pool && pool.length) base += " · candidates: " + pool.join(", ");
+        return base;
+    }
+
+    function onAttendees(p) {
+        renderAttendees(p.attendees || []);
+        if (revealBtn && !revealed) setRevealEnabled(!!p.revealReady);
+        if (!revealed) statusEl.textContent = roomMessage(p.inRoom || 0, p.poolPreview);
+    }
+
+    function setRevealEnabled(on) {
+        revealBtn.disabled = !on;
+        hostHint.textContent = on
+            ? "the room is charged. drop it."
+            : "need at least 2 eligible providers connected";
+    }
+
     function renderAttendees(list) {
         attendeesEl.innerHTML = "";
         turntable.innerHTML = "";
         if (!list.length) {
-            var li = document.createElement("li");
-            li.className = "muted";
-            li.textContent = "nobody connected yet — be the first record!";
-            attendeesEl.appendChild(li);
-            statusEl.textContent = "waiting for at least two spinning records…";
+            var empty = document.createElement("li");
+            empty.className = "muted";
+            empty.textContent = "nobody connected yet — be the first record!";
+            attendeesEl.appendChild(empty);
+            return;
         }
         list.forEach(function (a) {
             var li = document.createElement("li");
-            li.textContent = "⏻ " + a.alias + (a.provider ? "  [ " + a.provider + " ]" : "") + (a.isYou ? "  ← you" : "");
+            li.className = a.live ? "" : "muted";
+            var mark = a.live ? "⏻" : "○";
+            li.textContent = mark + " " + a.alias + (a.provider ? "  [ " + a.provider + " ]" : "")
+                + (a.isYou ? "  ← you" : "") + (a.live ? "" : "  (left)");
             attendeesEl.appendChild(li);
 
             var disc = document.createElement("div");
-            disc.className = "vinyl";
+            disc.className = "vinyl" + (a.live ? "" : " vinyl-offline");
             disc.dataset.provider = a.provider || a.alias;
+            disc.dataset.live = a.live ? "1" : "0";
             var label = document.createElement("span");
             label.className = "vinyl-label";
             label.textContent = disc.dataset.provider;
             disc.appendChild(label);
             turntable.appendChild(disc);
         });
-        if (revealBtn && list.length < 2 && !revealed) {
-            revealBtn.disabled = true;
-            hostHint.textContent = "need at least 2 spinning records (connected: " + list.length + ")";
-        } else if (revealBtn && !revealed) {
-            revealBtn.disabled = false;
-            hostHint.textContent = "all systems nominal. the algorithm grows restless.";
-        }
     }
 
     if (revealBtn) revealBtn.addEventListener("click", function () {
@@ -112,8 +124,9 @@
         fetch(revealPath, { method: "POST" }).then(function (res) {
             if (!res.ok) {
                 return res.text().then(function (t) {
-                    statusEl.textContent = t || "the needle jammed";
-                    revealBtn.disabled = false;
+                    statusEl.textContent = (t || "the needle jammed").trim();
+                    setRevealEnabled(false);
+                    setTimeout(function () { setRevealEnabled(true); }, 1500);
                 });
             }
             // the broadcast will carry the reveal to every screen

@@ -34,18 +34,23 @@ type inviteRecord struct {
 type fakeMailer struct {
 	verifications map[string]string
 	invites       map[string]*inviteRecord
+	magicKeys     map[string]string
+	loginLinks    map[string]string
 }
 
 func newFakeMailer() *fakeMailer {
 	return &fakeMailer{
 		verifications: map[string]string{},
 		invites:       map[string]*inviteRecord{},
+		magicKeys:     map[string]string{},
+		loginLinks:    map[string]string{},
 	}
 }
 
 func (f *fakeMailer) capture() func(to, subject, body string) error {
 	return func(to, subject, body string) error {
-		if strings.HasPrefix(subject, "Verify") {
+		switch {
+		case strings.HasPrefix(subject, "Verify"):
 			if idx := strings.Index(body, "?token="); idx != -1 {
 				rest := body[idx+7:]
 				if end := strings.IndexAny(rest, " \t\r\n"); end != -1 {
@@ -53,21 +58,25 @@ func (f *fakeMailer) capture() func(to, subject, body string) error {
 				}
 				f.verifications[to] = rest
 			}
-			return nil
-		}
-		if strings.HasPrefix(subject, "You've been invited") {
-			u := ""
-			for _, line := range strings.Split(body, "\n") {
-				line = strings.TrimSpace(line)
-				if strings.HasPrefix(line, "http") {
-					u = line
-					break
-				}
-			}
-			f.invites[to] = &inviteRecord{to: to, url: u}
+		case strings.HasPrefix(subject, "You've been invited"):
+			f.invites[to] = &inviteRecord{to: to, url: firstURL(body)}
+		case strings.HasPrefix(subject, "Your permanent Tunesday key"):
+			f.magicKeys[to] = firstURL(body)
+		case strings.HasPrefix(subject, "Your tunesday.fm login links"):
+			f.loginLinks[to] = body
 		}
 		return nil
 	}
+}
+
+func firstURL(body string) string {
+	for _, line := range strings.Split(body, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "http") {
+			return line
+		}
+	}
+	return ""
 }
 
 func (f *fakeMailer) inviteTokenFor(email string) string {
@@ -330,6 +339,12 @@ func TestInviteAcceptAndMagicLink(t *testing.T) {
 	member, _ := h.deps.Members.Get(team.ID, user.ID)
 	if member == nil {
 		t.Fatal("member membership not created")
+	}
+
+	// Acceptance must deliver the permanent magic key by email.
+	keyURL := fm.magicKeys["member@example.com"]
+	if !strings.Contains(keyURL, "/join/"+member.MagicToken) {
+		t.Fatalf("expected magic key email with join link, got %q", keyURL)
 	}
 
 	// Magic link login.

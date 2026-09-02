@@ -41,4 +41,18 @@
     <a class="terminal-btn" href="/teams/{{.Team.Slug}}/import">⇧ import / replace</a>
 </p>
 {{end}}
+
+<h3>Your account</h3>
+<p class="muted">
+    You can always get back in with your magic link
+    (<a href="/login/link">email me a new one</a>).
+    A password is optional.
+</p>
+<form method="POST" action="/account/password">
+    <label>{{if .HasPassword}}Change{{else}}Set{{end}} password (optional)</label>
+    <input type="password" name="password" minlength="8" required placeholder="at least 8 characters">
+    <label>Confirm password</label>
+    <input type="password" name="password_confirm" minlength="8" required>
+    <button type="submit" class="terminal-btn">Save password</button>
+</form>
 {{end}}

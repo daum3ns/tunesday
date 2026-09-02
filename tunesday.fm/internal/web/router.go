@@ -29,6 +29,8 @@ func (h *Handler) Router() http.Handler {
 	r.Get("/verify", h.Verify)
 	r.Get("/login", h.LoginPage)
 	r.Post("/login", h.Login)
+	r.Get("/login/link", h.LoginPageLink)
+	r.Post("/login/link", h.SendLoginLink)
 
 	// Public magic links (they create the session themselves)
 	r.Get("/invite/{token}", h.AcceptInvitePage)
@@ -39,6 +41,7 @@ func (h *Handler) Router() http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(auth.Middleware(h.deps.Sessions, h.deps.Users))
 		r.Post("/logout", h.Logout)
+		r.Post("/account/password", h.SetPassword)
 
 		r.Get("/onboarding", h.Onboarding)
 		r.Get("/teams/new", h.NewTeamForm)

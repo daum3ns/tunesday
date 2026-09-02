@@ -3,8 +3,8 @@
 package ceremony
 
 import (
-	"encoding/json"
 	"log"
+	"sort"
 	"sync"
 	"time"
 
@@ -17,32 +17,74 @@ type Message struct {
 	Payload any    `json:"payload,omitempty"`
 }
 
+// Client is one connected browser. Per-client write locking makes it safe
+// for the hub and a join handler to write to the same connection.
+type Client struct {
+	conn    *websocket.Conn
+	userID  string
+	writeMu sync.Mutex
+}
+
+// SendJSON writes one message to this client, serialized against other writers.
+func (c *Client) SendJSON(v any) error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	_ = c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	return c.conn.WriteJSON(v)
+}
+
+// CloseConnection closes the underlying connection.
+func (c *Client) CloseConnection() {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	_ = c.conn.Close()
+}
+
 // Room tracks the live WebSocket clients for one ceremony.
 type Room struct {
 	token   string
 	mu      sync.Mutex
-	clients map[*websocket.Conn]struct{}
+	clients map[*Client]struct{}
 }
 
 func newRoom(token string) *Room {
-	return &Room{token: token, clients: map[*websocket.Conn]struct{}{}}
+	return &Room{token: token, clients: map[*Client]struct{}{}}
 }
 
-// Join registers a connection and sends it nothing (the handler sends initial state).
-func (r *Room) Join(conn *websocket.Conn) {
+// Join registers a connection for a user and returns its client handle.
+func (r *Room) Join(conn *websocket.Conn, userID string) *Client {
+	c := &Client{conn: conn, userID: userID}
+	r.mu.Lock()
+	r.clients[c] = struct{}{}
+	r.mu.Unlock()
+	return c
+}
+
+// Leave removes a client registered via Join.
+func (r *Room) Leave(c *Client) {
+	r.mu.Lock()
+	delete(r.clients, c)
+	r.mu.Unlock()
+}
+
+// Participants returns the distinct user IDs currently connected (in the room).
+func (r *Room) Participants() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.clients[conn] = struct{}{}
+	seen := map[string]struct{}{}
+	var out []string
+	for c := range r.clients {
+		if _, dup := seen[c.userID]; dup {
+			continue
+		}
+		seen[c.userID] = struct{}{}
+		out = append(out, c.userID)
+	}
+	sort.Strings(out)
+	return out
 }
 
-// Leave removes a connection.
-func (r *Room) Leave(conn *websocket.Conn) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	delete(r.clients, conn)
-}
-
-// Count returns how many clients are connected.
+// Count returns how many connections are live.
 func (r *Room) Count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -51,21 +93,35 @@ func (r *Room) Count() int {
 
 // Broadcast sends msg to every connected client, dropping dead ones.
 func (r *Room) Broadcast(msgType string, payload any) {
-	data, err := json.Marshal(Message{Type: msgType, Payload: payload})
-	if err != nil {
-		log.Printf("ceremony %s: marshal %s: %v", r.token, msgType, err)
-		return
-	}
+	msg := Message{Type: msgType, Payload: payload}
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	for conn := range r.clients {
-		_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			delete(r.clients, conn)
-			_ = conn.Close()
+	clients := make([]*Client, 0, len(r.clients))
+	for c := range r.clients {
+		clients = append(clients, c)
+	}
+	r.mu.Unlock()
+
+	var dead []*Client
+	for _, c := range clients {
+		if err := c.SendJSON(msg); err != nil {
+			dead = append(dead, c)
 		}
 	}
+	if len(dead) == 0 {
+		return
+	}
+	r.mu.Lock()
+	for _, c := range dead {
+		if _, ok := r.clients[c]; ok {
+			delete(r.clients, c)
+			r.mu.Unlock()
+			log.Printf("ceremony %s: dropping dead client", r.token)
+			c.CloseConnection()
+			r.mu.Lock()
+		}
+	}
+	r.mu.Unlock()
 }
 
 // Manager owns the set of active ceremony rooms.

@@ -141,3 +141,34 @@ func (s *TeamMemberStore) CountAdmins(teamID string) (int, error) {
 	).Scan(&count)
 	return count, err
 }
+
+// Membership is a user's active spot in a team, with what they need to log in.
+type Membership struct {
+	TeamName   string
+	TeamSlug   string
+	MagicToken string
+}
+
+// ListForUser returns all memberships (with team info) for login-link emails.
+func (s *TeamMemberStore) ListForUser(userID string) ([]*Membership, error) {
+	rows, err := s.db.Query(
+		`SELECT t.name, t.slug, m.magic_token
+		 FROM team_members m JOIN teams t ON t.id = m.team_id
+		 WHERE m.user_id = ? ORDER BY t.name`,
+		userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*Membership
+	for rows.Next() {
+		var mem Membership
+		if err := rows.Scan(&mem.TeamName, &mem.TeamSlug, &mem.MagicToken); err != nil {
+			return nil, err
+		}
+		out = append(out, &mem)
+	}
+	return out, rows.Err()
+}

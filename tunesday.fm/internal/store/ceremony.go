@@ -120,11 +120,21 @@ func (s *CeremonyStore) get(query, arg string) (*Ceremony, error) {
 	return &c, nil
 }
 
-// RecordReveal stores the drawn winner; it only applies while unrevealed.
-func (s *CeremonyStore) RecordReveal(id string, winnerProviderID int64) error {
+// RecordReveal stores the drawn winner together with the pool and seed that
+// were actually in play at reveal time. It only applies while unrevealed,
+// making double-reveal impossible; the stored (seed, pool) reproduces the
+// winner exactly.
+func (s *CeremonyStore) RecordReveal(id string, seed int64, pool []string, winnerProviderID int64) error {
+	poolJSON, err := json.Marshal(pool)
+	if err != nil {
+		return err
+	}
 	res, err := s.db.Exec(
-		`UPDATE ceremonies SET winner_provider_id = ?, revealed_at = ? WHERE id = ? AND revealed_at IS NULL`,
-		winnerProviderID, formatTime(time.Now()), id,
+		`UPDATE ceremonies
+		 SET winner_provider_id = ?, revealed_at = ?, seed = ?, pool_json = ?,
+		     algorithm_version = 'attendees-random-v1'
+		 WHERE id = ? AND revealed_at IS NULL`,
+		winnerProviderID, formatTime(time.Now()), seed, string(poolJSON), id,
 	)
 	if err != nil {
 		return err

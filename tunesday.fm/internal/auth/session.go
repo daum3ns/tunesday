@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gorilla/sessions"
 )
@@ -16,14 +17,18 @@ type SessionStore struct {
 	store *sessions.CookieStore
 }
 
-// NewSessionStore creates a session store.
-func NewSessionStore(secret []byte, secure bool) *SessionStore {
+// NewSessionStore creates a session store with the given cookie lifetime.
+// A zero lifetime falls back to 30 days.
+func NewSessionStore(secret []byte, secure bool, lifetime time.Duration) *SessionStore {
+	if lifetime <= 0 {
+		lifetime = 30 * 24 * time.Hour
+	}
 	store := sessions.NewCookieStore(secret)
 	store.Options.Path = "/"
 	store.Options.HttpOnly = true
 	store.Options.Secure = secure
 	store.Options.SameSite = http.SameSiteLaxMode
-	store.Options.MaxAge = 7 * 24 * 60 * 60 // 7 days
+	store.Options.MaxAge = int(lifetime.Seconds())
 	return &SessionStore{store: store}
 }
 

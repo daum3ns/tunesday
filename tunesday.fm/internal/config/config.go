@@ -31,7 +31,7 @@ func Load() (*Config, error) {
 		ListenAddr:      getEnv("TUNESDAY_FM_LISTEN_ADDR", ":8080"),
 		BaseURL:         os.Getenv("TUNESDAY_FM_BASE_URL"),
 		DataDir:         getEnv("TUNESDAY_FM_DATA_DIR", "/data"),
-		SessionLifetime: getDuration("TUNESDAY_FM_SESSION_LIFETIME", 7*24*time.Hour),
+		SessionLifetime: getDuration("TUNESDAY_FM_SESSION_LIFETIME", 30*24*time.Hour),
 		BcryptCost:      getInt("TUNESDAY_FM_BCRYPT_COST", 10),
 		SessionSecure:   getBool("TUNESDAY_FM_SESSION_SECURE", true),
 		SMTPHost:        os.Getenv("TUNESDAY_FM_SMTP_HOST"),

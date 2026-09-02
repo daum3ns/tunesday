@@ -1,0 +1,13 @@
+{{define "content"}}
+<h2>Get your login link</h2>
+<p>
+    No password? No problem. Enter your email and we'll send you magic links
+    for every team you're a member of. They work on any device.
+</p>
+<form method="POST" action="/login/link">
+    <label>Email</label>
+    <input type="email" name="email" required placeholder="you@example.com">
+    <button type="submit" class="terminal-btn">Email me my links</button>
+</form>
+<p><a href="/login">Back to password login</a></p>
+{{end}}

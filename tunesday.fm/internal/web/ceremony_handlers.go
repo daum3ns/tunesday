@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
-	"tunesday/internal/core"
 	"tunesday/internal/playlist"
 	"tunesday/tunesday.fm/internal/auth"
 	"tunesday/tunesday.fm/internal/ceremony"
@@ -31,17 +31,20 @@ type attendeeInfo struct {
 	Alias        string `json:"alias"`
 	ProviderName string `json:"provider"`
 	IsYou        bool   `json:"isYou,omitempty"`
+	Live         bool   `json:"live"`
 }
 
 // ceremonyState is the full room snapshot sent on join.
 type ceremonyState struct {
-	Status     string         `json:"status"` // open | revealed | completed
-	Attendees  []attendeeInfo `json:"attendees"`
-	Winner     string         `json:"winner,omitempty"`
-	TuneTitle  string         `json:"tuneTitle,omitempty"`
-	CanReveal  bool           `json:"canReveal"`
-	YouWin     bool           `json:"youWin"`
-	CanAddTune bool           `json:"canAddTune"`
+	Status      string         `json:"status"` // open | revealed | completed
+	Attendees   []attendeeInfo `json:"attendees"`
+	InRoom      int            `json:"inRoom"`
+	PoolPreview []string       `json:"poolPreview,omitempty"`
+	Winner      string         `json:"winner,omitempty"`
+	TuneTitle   string         `json:"tuneTitle,omitempty"`
+	CanReveal   bool           `json:"canReveal"`
+	YouWin      bool           `json:"youWin"`
+	CanAddTune  bool           `json:"canAddTune"`
 }
 
 // StartCeremony creates a ceremony room, recording seed and pool for audit.
@@ -59,24 +62,17 @@ func (h *Handler) StartCeremony(w http.ResponseWriter, r *http.Request) {
 	}
 
 	names := make([]string, 0, len(eligible))
-	counts := make(map[string]int, len(eligible))
 	for _, p := range eligible {
 		names = append(names, p.Name)
-		counts[p.Name] = p.TuneCount
-	}
-	lastProvider, _ := h.deps.Tunes.LastSubmitterProvider(team.ID)
-	pool := core.ComputeProviderPool(names, counts, lastProvider)
-	if len(pool) == 0 {
-		redirectFlash(w, r, back, "err", "No providers left in the pool.")
-		return
 	}
 
-	seed := rand.Int63()
 	cer := &store.Ceremony{
 		TeamID:    team.ID,
 		StartedBy: member.UserID,
-		Seed:      seed,
-		Pool:      pool,
+		// Seed stays 0 and Pool holds the full roster as a baseline;
+		// the real pool + seed are recorded at reveal from who is in the room.
+		Seed: 0,
+		Pool: names,
 	}
 	if err := h.deps.Ceremonies.Create(cer); err != nil {
 		redirectFlash(w, r, back, "err", "Could not start the ceremony.")
@@ -151,14 +147,16 @@ func (h *Handler) CeremonyWS(w http.ResponseWriter, r *http.Request) {
 	// ensureAlias persists the attendee record (side effect) and reuses
 	// an existing alias when someone reconnects.
 	h.ensureAlias(cer, user.ID)
-	room.Join(conn)
+	client := room.Join(conn, user.ID)
 	defer func() {
-		room.Leave(conn)
+		room.Leave(client)
+		h.broadcastAttendees(cer)
+		client.CloseConnection()
 		h.deps.Rooms.Forget(cer.Token)
 	}()
 
 	h.broadcastAttendees(cer)
-	h.sendState(conn, cer, user.ID)
+	h.sendState(client, cer, user.ID)
 
 	conn.SetReadLimit(512)
 	_ = conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
@@ -191,10 +189,14 @@ func (h *Handler) ensureAlias(cer *store.Ceremony, userID string) string {
 
 // ceremonyState assembles the full snapshot for one viewer.
 func (h *Handler) ceremonyState(cer *store.Ceremony, viewerID string) ceremonyState {
-	st := ceremonyState{
-		Status:    "open",
-		CanReveal: !cer.Revealed() && h.isCeremonyHost(cer, viewerID),
+	room := h.deps.Rooms.RoomFor(cer.Token)
+	live := room.Participants()
+	inRoom := map[string]bool{}
+	for _, uid := range live {
+		inRoom[uid] = true
 	}
+
+	st := ceremonyState{Status: "open", InRoom: len(live)}
 
 	attendees, _ := h.deps.Ceremonies.ListAttendees(cer.ID)
 	members, _ := h.deps.Members.ListByTeam(cer.TeamID)
@@ -209,10 +211,14 @@ func (h *Handler) ceremonyState(cer *store.Ceremony, viewerID string) ceremonySt
 			Alias:        a.Alias,
 			ProviderName: providerByUser[a.UserID],
 			IsYou:        a.UserID == viewerID,
+			Live:         inRoom[a.UserID],
 		})
 	}
 
 	if !cer.Revealed() {
+		pool, connected := h.revealPool(cer, live)
+		st.PoolPreview = pool
+		st.CanReveal = h.isCeremonyHost(cer, viewerID) && len(connected) >= 2
 		return st
 	}
 	st.Status = "revealed"
@@ -248,30 +254,88 @@ func (h *Handler) isTeamAdmin(teamID, userID string) bool {
 	return member != nil && member.Role == "admin"
 }
 
-// broadcastAttendees pushes the current attendee list to the whole room.
+// broadcastAttendees pushes the attendee list plus live reveal readiness to the room.
 func (h *Handler) broadcastAttendees(cer *store.Ceremony) {
 	room := h.deps.Rooms.RoomFor(cer.Token)
+	live := room.Participants()
+
 	attendees, _ := h.deps.Ceremonies.ListAttendees(cer.ID)
 	members, _ := h.deps.Members.ListByTeam(cer.TeamID)
 	providerByUser := map[string]string{}
 	for _, m := range members {
 		providerByUser[m.UserID] = m.ProviderName
 	}
+	liveSet := map[string]struct{}{}
+	for _, uid := range live {
+		liveSet[uid] = struct{}{}
+	}
 	list := make([]attendeeInfo, 0, len(attendees))
 	for _, a := range attendees {
-		list = append(list, attendeeInfo{Alias: a.Alias, ProviderName: providerByUser[a.UserID]})
+		_, here := liveSet[a.UserID]
+		list = append(list, attendeeInfo{
+			Alias:        a.Alias,
+			ProviderName: providerByUser[a.UserID],
+			Live:         here,
+		})
 	}
-	room.Broadcast("attendees", map[string]any{"attendees": list})
+
+	preview, connected := h.revealPool(cer, live)
+	room.Broadcast("attendees", map[string]any{
+		"attendees":   list,
+		"inRoom":      len(live),
+		"poolPreview": preview,
+		"revealReady": !cer.Revealed() && len(connected) >= 2,
+	})
+}
+
+// revealPool derives the candidates from who is actually in the room:
+// connected members' providers minus the most recent submitter.
+// It also returns the full connected provider list (before exclusion).
+func (h *Handler) revealPool(cer *store.Ceremony, live []string) (pool, connected []string) {
+	eligible, err := h.deps.Providers.ListEligibleByTeam(cer.TeamID)
+	if err != nil {
+		return nil, nil
+	}
+	isEligible := map[string]bool{}
+	for _, p := range eligible {
+		isEligible[p.Name] = true
+	}
+	members, _ := h.deps.Members.ListByTeam(cer.TeamID)
+	providerByUser := map[string]string{}
+	for _, m := range members {
+		providerByUser[m.UserID] = m.ProviderName
+	}
+	seen := map[string]bool{}
+	for _, uid := range live {
+		if name := providerByUser[uid]; name != "" && isEligible[name] && !seen[name] {
+			seen[name] = true
+			connected = append(connected, name)
+		}
+	}
+	sort.Strings(connected)
+
+	last, _ := h.deps.Tunes.LastSubmitterProvider(cer.TeamID)
+	pool = make([]string, 0, len(connected))
+	for _, name := range connected {
+		if name != last {
+			pool = append(pool, name)
+		}
+	}
+	if len(pool) == 0 {
+		pool = connected
+	}
+	return pool, connected
 }
 
 // sendState delivers the full snapshot to one freshly joined client.
-func (h *Handler) sendState(conn *websocket.Conn, cer *store.Ceremony, viewerID string) {
+func (h *Handler) sendState(client *ceremony.Client, cer *store.Ceremony, viewerID string) {
 	st := h.ceremonyState(cer, viewerID)
-	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_ = conn.WriteJSON(ceremony.Message{Type: "state", Payload: st})
+	_ = client.SendJSON(ceremony.Message{Type: "state", Payload: st})
 }
 
-// CeremonyReveal draws the winner with the recorded seed and tells the room.
+// CeremonyReveal draws a uniform random winner from the providers present in
+// the room (excluding the most recent submitter). Seed and pool are recorded
+// at reveal time so the draw is reproducible from the ceremony row alone.
 func (h *Handler) CeremonyReveal(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	team, _, cer, ok := h.loadCeremony(w, r)
@@ -286,13 +350,18 @@ func (h *Handler) CeremonyReveal(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "the needle has already dropped", http.StatusConflict)
 		return
 	}
-	if len(cer.Pool) == 0 {
-		http.Error(w, "ceremony has no pool", http.StatusInternalServerError)
+
+	room := h.deps.Rooms.RoomFor(cer.Token)
+	live := room.Participants()
+	pool, connected := h.revealPool(cer, live)
+	if len(connected) < 2 {
+		http.Error(w, "at least two eligible providers must be in the room", http.StatusConflict)
 		return
 	}
 
-	rng := rand.New(rand.NewSource(cer.Seed))
-	winnerName := cer.Pool[rng.Intn(len(cer.Pool))]
+	seed := rand.Int63()
+	rng := rand.New(rand.NewSource(seed))
+	winnerName := pool[rng.Intn(len(pool))]
 
 	provider, err := h.deps.Providers.GetByName(team.ID, winnerName)
 	if err != nil || provider == nil {
@@ -300,16 +369,15 @@ func (h *Handler) CeremonyReveal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.deps.Ceremonies.RecordReveal(cer.ID, provider.ID); err != nil {
+	if err := h.deps.Ceremonies.RecordReveal(cer.ID, seed, pool, provider.ID); err != nil {
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
 
-	room := h.deps.Rooms.RoomFor(cer.Token)
 	room.Broadcast("reveal", map[string]any{
-		"pool":        cer.Pool,
+		"pool":        pool,
 		"winner":      provider.Name,
-		"seed":        cer.Seed,
+		"seed":        seed,
 		"duration_ms": ceremonyRevealDurationMs,
 	})
 

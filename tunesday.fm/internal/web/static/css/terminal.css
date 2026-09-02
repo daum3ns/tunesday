@@ -320,6 +320,12 @@ a {
     opacity: 0.25;
 }
 
+.vinyl.vinyl-offline {
+    animation-play-state: paused;
+    opacity: 0.3;
+    border-color: #050;
+}
+
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.8); } }
 

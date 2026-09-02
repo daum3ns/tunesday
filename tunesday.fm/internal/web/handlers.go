@@ -55,7 +55,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		"base.html", "landing.html", "register.html", "login.html",
 		"verify.html", "message.html", "onboarding.html", "team_new.html",
 		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
-		"ceremony.html", "import.html", "import_confirm.html",
+		"ceremony.html", "import.html", "import_confirm.html", "login_link.html",
 	}
 	tmpls := make(map[string]*template.Template)
 	for _, page := range pages {
@@ -86,6 +86,9 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, page string, da
 	}
 	if _, ok := data["CurrentUser"]; !ok {
 		data["CurrentUser"] = auth.UserFromContext(r.Context())
+	}
+	if _, ok := data["HasPassword"]; !ok {
+		data["HasPassword"] = hasPassword(r)
 	}
 	if q := r.URL.Query(); len(q) > 0 {
 		if msg := q.Get("ok"); msg != "" {

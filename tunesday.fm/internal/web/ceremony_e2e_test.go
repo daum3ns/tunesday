@@ -231,8 +231,12 @@ func TestCeremonyEndToEnd(t *testing.T) {
 	if m := readUntil(t, adminConn, "state"); json.Unmarshal(m.Payload, &adminState) != nil {
 		t.Fatal("bad state payload")
 	}
-	if !adminState.CanReveal || adminState.Status != "open" {
+	if adminState.Status != "open" {
 		t.Fatalf("admin state wrong: %+v", adminState)
+	}
+	// Host alone in the room: not reveal-ready yet.
+	if adminState.CanReveal {
+		t.Fatal("host must not be able to reveal while alone in the room")
 	}
 	if len(adminState.Attendees) != 1 {
 		t.Fatalf("expected 1 attendee, got %d", len(adminState.Attendees))

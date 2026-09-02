@@ -31,6 +31,17 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
+	// An in-memory SQLite database lives per connection: every new pooled
+	// connection would start empty. Serialize it onto one connection.
+	// For file databases, set a busy timeout so concurrent writers queue
+	// instead of failing with SQLITE_BUSY.
+	if strings.HasPrefix(path, ":memory:") {
+		sqlDB.SetMaxOpenConns(1)
+	} else if _, err := sqlDB.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("busy_timeout: %w", err)
+	}
+
 	db := &DB{sqlDB}
 	if err := db.runMigrations(); err != nil {
 		_ = sqlDB.Close()

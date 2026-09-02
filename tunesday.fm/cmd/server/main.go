@@ -30,7 +30,7 @@ func main() {
 		DB:            database,
 		Users:         store.NewUserStore(database),
 		Verifications: store.NewVerificationTokenStore(database),
-		Sessions:      auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure),
+		Sessions:      auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure, cfg.SessionLifetime),
 		Email:         email.NewService(cfg),
 		Teams:         store.NewTeamStore(database),
 		Providers:     store.NewProviderStore(database),

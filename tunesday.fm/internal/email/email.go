@@ -73,6 +73,40 @@ func (s *Service) SendInvitationEmail(to, teamName, magicURL string) error {
 	return s.send(to, subject, body)
 }
 
+// SendMagicKeyEmail welcomes a new member with their permanent login link.
+func (s *Service) SendMagicKeyEmail(to, teamName, joinURL string) error {
+	data := struct {
+		TeamName string
+		URL      string
+	}{
+		TeamName: teamName,
+		URL:      joinURL,
+	}
+	subject := "Your permanent Tunesday key"
+	body, err := render(magicKeyTmpl, data)
+	if err != nil {
+		return err
+	}
+	return s.send(to, subject, body)
+}
+
+// TeamLink pairs a team name with its join URL for login emails.
+type TeamLink struct {
+	TeamName string
+	URL      string
+}
+
+// SendLoginLinkEmail delivers magic links for self-service login.
+func (s *Service) SendLoginLinkEmail(to string, links []TeamLink) error {
+	data := struct{ Links []TeamLink }{Links: links}
+	subject := "Your tunesday.fm login links"
+	body, err := render(loginLinkTmpl, data)
+	if err != nil {
+		return err
+	}
+	return s.send(to, subject, body)
+}
+
 func render(tmpl *template.Template, data any) (string, error) {
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -97,4 +131,23 @@ Click the link below to join:
 {{.URL}}
 
 This link is valid until revoked by a team admin.
+`))
+
+var magicKeyTmpl = template.Must(template.New("magickey").Parse(`Welcome to "{{.TeamName}}"!
+
+Here is your permanent Tunesday key. Click it (or bookmark it) whenever you
+want to log in — no password needed:
+
+{{.URL}}
+
+This link works on any device and never expires until a team admin removes
+you from the team. Lost it? Visit the login page and choose
+"Email me my magic link".
+`))
+
+var loginLinkTmpl = template.Must(template.New("loginlink").Parse(`Here are your tunesday.fm login links:
+
+{{range .Links}}- {{.TeamName}}: {{.URL}}
+{{end}}
+Each link logs you in directly. No passwords needed.
 `))

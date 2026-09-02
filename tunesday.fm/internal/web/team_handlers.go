@@ -3,6 +3,7 @@ package web
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -662,6 +663,13 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = h.deps.Invitations.MarkAccepted(inv.ID, user.ID)
+
+	// Deliver the permanent magic key so the member can always get back in,
+	// even after holidays longer than any cookie lifetime.
+	joinURL := h.cfg.BaseURL + "/join/" + m.MagicToken
+	if err := h.deps.Email.SendMagicKeyEmail(user.Email, team.Name, joinURL); err != nil {
+		log.Printf("tunesday.fm: magic key email to %s failed: %v", user.Email, err)
+	}
 
 	redirectFlash(w, r, "/teams/"+team.Slug+"/dashboard", "ok", "Welcome to "+team.Name+"! You are now a provider.")
 }

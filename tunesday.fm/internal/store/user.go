@@ -95,6 +95,12 @@ func (s *UserStore) MarkVerified(id string) error {
 	return err
 }
 
+// SetPasswordHash stores (or replaces) the optional account password.
+func (s *UserStore) SetPasswordHash(id, hash string) error {
+	_, err := s.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, hash, id)
+	return err
+}
+
 // Exists checks whether a user with the given email exists.
 func (s *UserStore) Exists(email string) (bool, error) {
 	var count int
