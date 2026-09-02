@@ -250,7 +250,34 @@ a {
 
 .share-box code { word-break: break-all; }
 
-#roulette { margin: 1rem 0; }
+#roulette { margin: 1rem 0; position: relative; }
+
+#countdown {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: clamp(80px, 22vw, 200px);
+    font-weight: bold;
+    color: #0f0;
+    text-shadow: 0 0 24px #0f0;
+    z-index: 5;
+    animation: cdpop 1s ease-out infinite;
+}
+
+@keyframes cdpop {
+    0% { transform: scale(1.6); opacity: 0.15; }
+    40% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1); opacity: 0.7; }
+}
+
+.share-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+}
 
 #turntable {
     display: flex;
@@ -306,6 +333,16 @@ a {
     animation: spin 0.15s linear infinite;
     box-shadow: 0 0 14px #0f0;
     transform: scale(1.1);
+}
+
+.vinyl.candidate {
+    border-color: #0f0;
+    animation: spin 4s linear infinite, candidate-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes candidate-pulse {
+    from { box-shadow: 0 0 3px #040; }
+    to { box-shadow: 0 0 16px #0f0; }
 }
 
 .vinyl.winner-record {

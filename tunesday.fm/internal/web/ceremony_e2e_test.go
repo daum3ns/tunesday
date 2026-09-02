@@ -35,9 +35,11 @@ type ceremonyStatePayload struct {
 }
 
 type revealPayload struct {
-	Pool   []string `json:"pool"`
-	Winner string   `json:"winner"`
-	Seed   int64    `json:"seed"`
+	Pool        []string `json:"pool"`
+	Winner      string   `json:"winner"`
+	Seed        int64    `json:"seed"`
+	DurationMs  int      `json:"duration_ms"`
+	CountdownMs int      `json:"countdown_ms"`
 }
 
 // testUser is a browser-like client with its own cookie jar.
@@ -297,6 +299,10 @@ func TestCeremonyEndToEnd(t *testing.T) {
 	if len(drummerReveal.Pool) != 2 {
 		t.Fatalf("expected pool of 2, got %v", drummerReveal.Pool)
 	}
+	if drummerReveal.CountdownMs != 3000 || adminReveal.CountdownMs != 3000 {
+		t.Fatalf("expected 3000ms synced countdown, got %d / %d",
+			adminReveal.CountdownMs, drummerReveal.CountdownMs)
+	}
 
 	// Double reveal is rejected.
 	res2 := admin.postForm(server, "/teams/ceremony-squad/ceremonies/"+token+"/reveal", url.Values{})
@@ -335,6 +341,13 @@ func TestCeremonyEndToEnd(t *testing.T) {
 	provider, _ := h.deps.Providers.GetByID(cer.WinnerProviderID)
 	if provider == nil || provider.TuneCount != 1 {
 		t.Fatalf("expected winner provider tune count 1, got %+v", provider)
+	}
+
+	// Dashboard history must show the finished ceremony: winner + tune.
+	dash := admin.get(server, "/teams/ceremony-squad/dashboard")
+	dashBody := readBody(t, dash)
+	if !strings.Contains(dashBody, drummerReveal.Winner) || !strings.Contains(dashBody, "Fake Title") {
+		t.Fatalf("dashboard history missing winner/tune: %s", dashBody)
 	}
 
 	// A late joiner gets the full completed state (using the admin session).

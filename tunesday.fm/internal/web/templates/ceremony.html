@@ -2,13 +2,16 @@
 <h2>The Tunesday Roulette</h2>
 
 <div class="share-box">
-    <p>Session link (share it with the team):</p>
+    <p class="share-line">Session link (share it with the team):
+        <button type="button" class="terminal-btn small" id="mute-btn">sound</button>
+    </p>
     <p><code id="session-url">…</code>
         <button type="button" class="terminal-btn small" id="copy-link">copy</button>
     </p>
 </div>
 
 <div id="roulette">
+    <div id="countdown" hidden></div>
     <div id="turntable"></div>
     <div id="drum-status">connecting to the broadcast…</div>
 </div>

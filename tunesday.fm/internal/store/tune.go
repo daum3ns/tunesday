@@ -95,6 +95,26 @@ func (s *TuneStore) ListAllByTeam(teamID string) ([]*TuneView, error) {
 	return out, rows.Err()
 }
 
+// GetByID returns a single tune with its provider name.
+func (s *TuneStore) GetByID(id int64) (*TuneView, error) {
+	var v TuneView
+	var addedAt sql.NullString
+	err := s.db.QueryRow(
+		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.provider_id, t.added_at, p.name
+		 FROM tunes t JOIN providers p ON p.id = t.provider_id WHERE t.id = ?`, id,
+	).Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID, &v.ProviderID, &addedAt, &v.ProviderName)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if addedAt.Valid {
+		v.AddedAt = parseTime(addedAt.String)
+	}
+	return &v, nil
+}
+
 // LastSubmitterProvider returns the provider name of the most recently
 // added tune, or "" when the team has no tunes.
 func (s *TuneStore) LastSubmitterProvider(teamID string) (string, error) {

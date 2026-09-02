@@ -33,6 +33,27 @@
 <p class="muted">No tunes imported yet.</p>
 {{end}}
 
+<h3>Recent ceremonies</h3>
+{{if .CeremonyHistory}}
+<table class="terminal-table">
+    <thead>
+    <tr><th>when</th><th>winner</th><th>tune</th><th>in the room</th></tr>
+    </thead>
+    <tbody>
+    {{range .CeremonyHistory}}
+    <tr>
+        <td>{{.StartedAt.Format "2006-01-02"}}</td>
+        <td>{{if eq .Status "open"}}<span class="muted">needle still hanging</span>{{else if .WinnerName}}★ {{.WinnerName}}{{else}}<span class="muted">?</span>{{end}}</td>
+        <td>{{if .TuneTitle}}♪ {{.TuneTitle}}{{else if eq .Status "revealed"}}<span class="terminal-error">no tune registered!</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{.PresentCount}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="muted">No ceremonies yet. The roulette awaits its first spin.</p>
+{{end}}
+
 {{if eq .Member.Role "admin"}}
 <h3>Data</h3>
 <p class="muted">Your team lives in the tunesday.fm database. JSON is just the door in and out.</p>

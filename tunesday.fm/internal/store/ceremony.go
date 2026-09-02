@@ -18,6 +18,7 @@ type Ceremony struct {
 	Seed             int64
 	Pool             []string
 	WinnerProviderID int64 // 0 while unrevealed
+	TuneID           int64 // 0 until the winner's tune is registered
 	AlgorithmVersion string
 	StartedAt        time.Time
 	RevealedAt       *time.Time
@@ -63,14 +64,16 @@ func (s *CeremonyStore) Create(c *Ceremony) error {
 	return err
 }
 
+const ceremonyColumns = `id, team_id, started_by, token, seed, pool_json, winner_provider_id, tune_id, algorithm_version, started_at, revealed_at, completed_at`
+
 // GetByToken returns a ceremony by room token.
 func (s *CeremonyStore) GetByToken(token string) (*Ceremony, error) {
-	return s.get(`SELECT id, team_id, started_by, token, seed, pool_json, winner_provider_id, algorithm_version, started_at, revealed_at, completed_at FROM ceremonies WHERE token = ?`, token)
+	return s.get(`SELECT `+ceremonyColumns+` FROM ceremonies WHERE token = ?`, token)
 }
 
 // GetByID returns a ceremony by ID.
 func (s *CeremonyStore) GetByID(id string) (*Ceremony, error) {
-	return s.get(`SELECT id, team_id, started_by, token, seed, pool_json, winner_provider_id, algorithm_version, started_at, revealed_at, completed_at FROM ceremonies WHERE id = ?`, id)
+	return s.get(`SELECT `+ceremonyColumns+` FROM ceremonies WHERE id = ?`, id)
 }
 
 func (s *CeremonyStore) get(query, arg string) (*Ceremony, error) {
@@ -78,6 +81,7 @@ func (s *CeremonyStore) get(query, arg string) (*Ceremony, error) {
 		c           Ceremony
 		poolJSON    string
 		winnerID    sql.NullInt64
+		tuneID      sql.NullInt64
 		seed        sql.NullInt64
 		startedAt   sql.NullString
 		revealedAt  sql.NullString
@@ -85,7 +89,7 @@ func (s *CeremonyStore) get(query, arg string) (*Ceremony, error) {
 		algoVersion sql.NullString
 	)
 	err := s.db.QueryRow(query, arg).Scan(
-		&c.ID, &c.TeamID, &c.StartedBy, &c.Token, &seed, &poolJSON, &winnerID,
+		&c.ID, &c.TeamID, &c.StartedBy, &c.Token, &seed, &poolJSON, &winnerID, &tuneID,
 		&algoVersion, &startedAt, &revealedAt, &completedAt,
 	)
 	if err != nil {
@@ -102,6 +106,9 @@ func (s *CeremonyStore) get(query, arg string) (*Ceremony, error) {
 	}
 	if winnerID.Valid {
 		c.WinnerProviderID = winnerID.Int64
+	}
+	if tuneID.Valid {
+		c.TuneID = tuneID.Int64
 	}
 	if algoVersion.Valid {
 		c.AlgorithmVersion = algoVersion.String
@@ -149,19 +156,38 @@ func (s *CeremonyStore) RecordReveal(id string, seed int64, pool []string, winne
 	return nil
 }
 
-// MarkCompleted records that the winner's tune has been registered.
-func (s *CeremonyStore) MarkCompleted(id string) error {
+// MarkCompleted records that the winner's tune has been registered, linking
+// the ceremony to that tune for a durable history.
+func (s *CeremonyStore) MarkCompleted(id string, tuneID int64) error {
 	_, err := s.db.Exec(
-		`UPDATE ceremonies SET completed_at = ? WHERE id = ? AND completed_at IS NULL`,
-		formatTime(time.Now()), id,
+		`UPDATE ceremonies SET completed_at = ?, tune_id = ? WHERE id = ? AND completed_at IS NULL`,
+		formatTime(time.Now()), tuneID, id,
 	)
 	return err
 }
 
-// ListRecentByTeam returns the newest ceremonies for a team.
-func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*Ceremony, error) {
+// CeremonyHistoryItem is a compact ceremony row for the dashboard list.
+type CeremonyHistoryItem struct {
+	Token        string
+	StartedAt    time.Time
+	Status       string // open | revealed | completed
+	WinnerName   string
+	TuneTitle    string
+	PresentCount int
+}
+
+// ListRecentByTeam returns the newest ceremonies for a team with winner/tune/
+// attendee info joined, for the dashboard history.
+func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*CeremonyHistoryItem, error) {
 	rows, err := s.db.Query(
-		`SELECT token FROM ceremonies WHERE team_id = ? ORDER BY started_at DESC LIMIT ?`,
+		`SELECT c.token, c.started_at, c.revealed_at, c.completed_at,
+		        COALESCE(p.name, ''), COALESCE(t.title, ''),
+		        (SELECT COUNT(*) FROM ceremony_attendees a WHERE a.ceremony_id = c.id)
+		 FROM ceremonies c
+		 LEFT JOIN providers p ON p.id = c.winner_provider_id
+		 LEFT JOIN tunes t ON t.id = c.tune_id
+		 WHERE c.team_id = ?
+		 ORDER BY c.started_at DESC LIMIT ?`,
 		teamID, limit,
 	)
 	if err != nil {
@@ -169,27 +195,31 @@ func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*Ceremony,
 	}
 	defer rows.Close()
 
-	var tokens []string
+	var out []*CeremonyHistoryItem
 	for rows.Next() {
-		var tk string
-		if err := rows.Scan(&tk); err != nil {
+		var (
+			item        CeremonyHistoryItem
+			startedAt   sql.NullString
+			revealedAt  sql.NullString
+			completedAt sql.NullString
+		)
+		if err := rows.Scan(&item.Token, &startedAt, &revealedAt, &completedAt,
+			&item.WinnerName, &item.TuneTitle, &item.PresentCount); err != nil {
 			return nil, err
 		}
-		tokens = append(tokens, tk)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-
-	var out []*Ceremony
-	for _, tk := range tokens {
-		c, err := s.GetByToken(tk)
-		if err != nil || c == nil {
-			return nil, err
+		if startedAt.Valid {
+			item.StartedAt = parseTime(startedAt.String)
 		}
-		out = append(out, c)
+		item.Status = "open"
+		if revealedAt.Valid {
+			item.Status = "revealed"
+		}
+		if completedAt.Valid {
+			item.Status = "completed"
+		}
+		out = append(out, &item)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // AddAttendee records a ceremony attendee with an alias, ignoring duplicates.

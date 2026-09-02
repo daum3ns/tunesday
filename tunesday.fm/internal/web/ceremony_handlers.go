@@ -18,7 +18,13 @@ import (
 	"tunesday/tunesday.fm/internal/store"
 )
 
-const ceremonyRevealDurationMs = 2500
+const (
+	ceremonyRevealDurationMs = 2500
+	// ceremonyCountdownMs is the pre-roll every screen shows after the host
+	// arms the needle. The winner is already committed server-side when this
+	// goes out, so nobody can "un-drop" it.
+	ceremonyCountdownMs = 3000
+)
 
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -229,14 +235,9 @@ func (h *Handler) ceremonyState(cer *store.Ceremony, viewerID string) ceremonySt
 	}
 	if cer.Completed() {
 		st.Status = "completed"
-		if winner != nil {
-			if tunes, err := h.deps.Tunes.ListRecentByTeam(cer.TeamID, 25); err == nil {
-				for _, t := range tunes {
-					if t.ProviderID == winner.ID {
-						st.TuneTitle = t.Title
-						break
-					}
-				}
+		if cer.TuneID != 0 {
+			if tune, err := h.deps.Tunes.GetByID(cer.TuneID); err == nil && tune != nil {
+				st.TuneTitle = tune.Title
 			}
 		}
 	}
@@ -375,10 +376,11 @@ func (h *Handler) CeremonyReveal(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room.Broadcast("reveal", map[string]any{
-		"pool":        pool,
-		"winner":      provider.Name,
-		"seed":        seed,
-		"duration_ms": ceremonyRevealDurationMs,
+		"pool":         pool,
+		"winner":       provider.Name,
+		"seed":         seed,
+		"duration_ms":  ceremonyRevealDurationMs,
+		"countdown_ms": ceremonyCountdownMs,
 	})
 
 	w.Header().Set("Content-Type", "application/json")
@@ -435,18 +437,24 @@ func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.deps.DB.Exec(
+	res, err := h.deps.DB.Exec(
 		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		team.ID, title, link, ytID, winner.ID, store.FormatTime(time.Now()),
-	); err != nil {
+	)
+	if err != nil {
 		redirectFlash(w, r, back, "err", "Could not save the tune.")
+		return
+	}
+	tuneID, err := res.LastInsertId()
+	if err != nil {
+		redirectFlash(w, r, back, "err", "Tune saved, but could not be linked.")
 		return
 	}
 	if err := h.deps.Providers.RecalculateCounts(team.ID); err != nil {
 		redirectFlash(w, r, back, "err", "Tune saved, but counts need a refresh.")
 		return
 	}
-	if err := h.deps.Ceremonies.MarkCompleted(cer.ID); err != nil {
+	if err := h.deps.Ceremonies.MarkCompleted(cer.ID, tuneID); err != nil {
 		redirectFlash(w, r, back, "err", "Tune saved, but ceremony state failed to update.")
 		return
 	}

@@ -201,12 +201,18 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		redirectFlash(w, r, "/teams/"+team.Slug+"/dashboard", "err", "Something went wrong")
 		return
 	}
+	ceremonies, err := h.deps.Ceremonies.ListRecentByTeam(team.ID, 5)
+	if err != nil {
+		redirectFlash(w, r, "/teams/"+team.Slug+"/dashboard", "err", "Something went wrong")
+		return
+	}
 
 	data := teamPage(team, member, "dashboard")
 	data["EligibleCount"] = len(providers)
 	data["MemberCount"] = len(membersList)
 	data["TuneCount"] = tuneCount
 	data["RecentTunes"] = recent
+	data["CeremonyHistory"] = ceremonies
 	data["SessionLink"] = h.cfg.BaseURL + "/teams/" + team.Slug + "/dashboard"
 	h.render(w, r, "dashboard.html", data)
 }
