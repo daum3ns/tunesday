@@ -56,6 +56,12 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/teams/{slug}/ceremonies/{token}/reveal", h.CeremonyReveal)
 		r.Post("/teams/{slug}/ceremonies/{token}/tune", h.CeremonyAddTune)
 
+		// Data: export and destructive replace (admin-only inside handlers)
+		r.Get("/teams/{slug}/export", h.ExportTeam)
+		r.Get("/teams/{slug}/import", h.ImportPage)
+		r.Post("/teams/{slug}/import", h.ImportPreview)
+		r.Post("/teams/{slug}/import/confirm", h.ImportConfirm)
+
 		// Admin-only mutations (role checks happen inside the handlers)
 		r.Post("/teams/{slug}/providers", h.AddProvider)
 		r.Post("/teams/{slug}/providers/{id}/rename", h.RenameProvider)

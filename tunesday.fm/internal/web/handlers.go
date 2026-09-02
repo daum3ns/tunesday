@@ -55,7 +55,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		"base.html", "landing.html", "register.html", "login.html",
 		"verify.html", "message.html", "onboarding.html", "team_new.html",
 		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
-		"ceremony.html",
+		"ceremony.html", "import.html", "import_confirm.html",
 	}
 	tmpls := make(map[string]*template.Template)
 	for _, page := range pages {

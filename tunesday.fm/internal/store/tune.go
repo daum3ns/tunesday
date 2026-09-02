@@ -65,6 +65,36 @@ func (s *TuneStore) ListRecentByTeam(teamID string, limit int) ([]*TuneView, err
 	return out, rows.Err()
 }
 
+// ListAllByTeam returns every tune of a team in chronological order.
+func (s *TuneStore) ListAllByTeam(teamID string) ([]*TuneView, error) {
+	rows, err := s.db.Query(
+		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.provider_id, t.added_at, p.name
+		 FROM tunes t JOIN providers p ON p.id = t.provider_id
+		 WHERE t.team_id = ?
+		 ORDER BY t.added_at, t.id`,
+		teamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []*TuneView
+	for rows.Next() {
+		var v TuneView
+		var addedAt sql.NullString
+		if err := rows.Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID,
+			&v.ProviderID, &addedAt, &v.ProviderName); err != nil {
+			return nil, err
+		}
+		if addedAt.Valid {
+			v.AddedAt = parseTime(addedAt.String)
+		}
+		out = append(out, &v)
+	}
+	return out, rows.Err()
+}
+
 // LastSubmitterProvider returns the provider name of the most recently
 // added tune, or "" when the team has no tunes.
 func (s *TuneStore) LastSubmitterProvider(teamID string) (string, error) {

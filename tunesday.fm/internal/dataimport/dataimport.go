@@ -119,23 +119,7 @@ func CreateTeam(database *db.DB, in CreateTeamInput) (*CreateTeamResult, error) 
 			if err := ensureProvider(t.Provider, false); err != nil {
 				return nil, err
 			}
-			ytID := t.ID
-			link := t.Link
-			if ytID == "" && link != "" {
-				clean := playlist.StripTrackingParams(link)
-				if id, ok := yt.NormalizeYouTubeID(clean); ok {
-					ytID = id
-				}
-			}
-			title := t.Name
-			if title == "" {
-				title = link
-			}
-			if _, err := tx.Exec(
-				`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at)
-				 VALUES (?, ?, ?, ?, ?, ?)`,
-				teamID, title, link, ytID, providerIDs[t.Provider], store.FormatTime(t.AddedAt),
-			); err != nil {
+			if err := insertTuneTx(tx, teamID, providerIDs[t.Provider], t, yt); err != nil {
 				return nil, fmt.Errorf("insert tune: %w", err)
 			}
 			res.TunesInserted++

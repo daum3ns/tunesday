@@ -1,0 +1,25 @@
+{{define "content"}}
+<h2>⚠ Confirm: replace all team data</h2>
+
+<div class="terminal-error">
+    <p>This is destructive for the tune data of <strong>{{.Team.Name}}</strong>:</p>
+    <ul>
+        <li>Tunes: <strong>{{.CurrentTunes}} deleted</strong> → <strong>{{.NewTunes}} imported</strong></li>
+        <li>Providers: file defines <strong>{{.NewProviders}}</strong> (current: {{.CurrentProviders}})</li>
+        {{if .RemoveProviders}}
+        <li>Providers removed (no members): {{range .RemoveProviders}}<code>{{.}}</code> {{end}}</li>
+        {{end}}
+        {{if .KeepProviders}}
+        <li>Providers kept despite missing from file (assigned to members): {{range .KeepProviders}}<code>{{.}}</code> {{end}}</li>
+        {{end}}
+        <li>Pending invitations for removed providers are revoked</li>
+        <li>Members, magic links, and ceremony history are untouched</li>
+    </ul>
+</div>
+
+<form method="POST" action="/teams/{{.Team.Slug}}/import/confirm">
+    <input type="hidden" name="payload_b64" value="{{.PayloadB64}}">
+    <button type="submit" class="terminal-btn danger">Yes — replace everything</button>
+</form>
+<p><a class="terminal-btn" href="/teams/{{.Team.Slug}}/import">No — cancel</a></p>
+{{end}}

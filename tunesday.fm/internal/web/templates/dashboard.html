@@ -32,4 +32,13 @@
 {{else}}
 <p class="muted">No tunes imported yet.</p>
 {{end}}
+
+{{if eq .Member.Role "admin"}}
+<h3>Data</h3>
+<p class="muted">Your team lives in the tunesday.fm database. JSON is just the door in and out.</p>
+<p>
+    <a class="terminal-btn" href="/teams/{{.Team.Slug}}/export">⇩ export tunesday.json</a>
+    <a class="terminal-btn" href="/teams/{{.Team.Slug}}/import">⇧ import / replace</a>
+</p>
+{{end}}
 {{end}}
