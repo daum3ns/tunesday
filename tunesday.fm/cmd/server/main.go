@@ -4,10 +4,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-
+	"tunesday/internal/playlist"
 	"tunesday/tunesday.fm/internal/auth"
+	"tunesday/tunesday.fm/internal/ceremony"
 	"tunesday/tunesday.fm/internal/config"
 	"tunesday/tunesday.fm/internal/db"
 	"tunesday/tunesday.fm/internal/email"
@@ -27,44 +26,29 @@ func main() {
 	}
 	defer database.Close()
 
-	users := store.NewUserStore(database)
-	verifications := store.NewVerificationTokenStore(database)
+	deps := web.Deps{
+		DB:            database,
+		Users:         store.NewUserStore(database),
+		Verifications: store.NewVerificationTokenStore(database),
+		Sessions:      auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure),
+		Email:         email.NewService(cfg),
+		Teams:         store.NewTeamStore(database),
+		Providers:     store.NewProviderStore(database),
+		Members:       store.NewTeamMemberStore(database),
+		Invitations:   store.NewInvitationStore(database),
+		Tunes:         store.NewTuneStore(database),
+		Ceremonies:    store.NewCeremonyStore(database),
+		Rooms:         ceremony.NewManager(),
+		YT:            playlist.NewYouTube(),
+	}
 
-	sessions := auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure)
-	mailer := email.NewService(cfg)
-
-	wh, err := web.NewHandler(cfg, users, verifications, sessions, mailer)
+	wh, err := web.NewHandler(cfg, deps)
 	if err != nil {
 		log.Fatalf("web handlers: %v", err)
 	}
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.RequestID)
-
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
-	})
-	r.Handle("/static/*", http.StripPrefix("/static/", wh.StaticFiles()))
-
-	r.Get("/", wh.Landing)
-	r.Get("/register", wh.RegisterPage)
-	r.Post("/register", wh.Register)
-	r.Get("/verify", wh.Verify)
-	r.Get("/login", wh.LoginPage)
-	r.Post("/login", wh.Login)
-	r.Post("/logout", wh.Logout)
-
-	r.Group(func(r chi.Router) {
-		r.Use(auth.Middleware(sessions, users))
-		r.Get("/onboarding", wh.Onboarding)
-	})
-
-	addr := cfg.ListenAddr
-	log.Printf("tunesday.fm listening on %s", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
+	log.Printf("tunesday.fm listening on %s", cfg.ListenAddr)
+	if err := http.ListenAndServe(cfg.ListenAddr, wh.Router()); err != nil {
 		log.Fatalf("server: %v", err)
 	}
 }

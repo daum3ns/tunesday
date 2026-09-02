@@ -37,7 +37,7 @@ func (s *VerificationTokenStore) Create(token *VerificationToken) error {
 	_, err := s.db.Exec(
 		`INSERT INTO verification_tokens (id, user_id, token, used, created_at, used_at)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		token.ID, token.UserID, token.Token, used, token.CreatedAt, token.UsedAt,
+		token.ID, token.UserID, token.Token, used, formatTime(token.CreatedAt), formatTimePtr(token.UsedAt),
 	)
 	return err
 }

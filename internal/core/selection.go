@@ -33,12 +33,31 @@ func SelectProvider(active []string, counts map[string]int, lastProvider string,
 	copy(activeCopy, active)
 	sort.Strings(activeCopy)
 
-	if len(activeCopy) == 0 {
-		return ProviderSelection{}
+	pool := ComputeProviderPool(activeCopy, counts, lastProvider)
+	if len(pool) == 0 {
+		return ProviderSelection{Active: activeCopy}
+	}
+
+	winner := pool[r.Intn(len(pool))]
+
+	return ProviderSelection{
+		Active: activeCopy,
+		Pool:   pool,
+		Winner: winner,
+	}
+}
+
+// ComputeProviderPool returns the eligible pool under the bottom-half rule
+// without drawing a winner. The pool is sorted alphabetically. This split lets
+// callers (e.g. tunesday.fm ceremonies) record the pool and seed at start time
+// and draw the winner later, keeping every ceremony reproducible.
+func ComputeProviderPool(active []string, counts map[string]int, lastProvider string) []string {
+	if len(active) == 0 {
+		return nil
 	}
 
 	// Sort by tune count to find the bottom half.
-	byCount := append([]string(nil), activeCopy...)
+	byCount := append([]string(nil), active...)
 	sort.SliceStable(byCount, func(i, j int) bool {
 		return countFor(counts, byCount[i]) < countFor(counts, byCount[j])
 	})
@@ -74,13 +93,7 @@ func SelectProvider(active []string, counts map[string]int, lastProvider string,
 		}
 	}
 
-	winner := pool[r.Intn(len(pool))]
-
-	return ProviderSelection{
-		Active: activeCopy,
-		Pool:   pool,
-		Winner: winner,
-	}
+	return pool
 }
 
 // SelectProviderFromData is a convenience wrapper that builds the active

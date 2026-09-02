@@ -36,40 +36,26 @@ func (s *UserStore) Create(user *User) error {
 	_, err := s.db.Exec(
 		`INSERT INTO users (id, email, password_hash, email_verified, created_at)
 		 VALUES (?, ?, ?, ?, ?)`,
-		user.ID, user.Email, user.PasswordHash, verified, user.CreatedAt,
+		user.ID, user.Email, user.PasswordHash, verified, formatTime(user.CreatedAt),
 	)
 	return err
 }
 
 // GetByEmail returns a user by email.
 func (s *UserStore) GetByEmail(email string) (*User, error) {
-	var user User
-	var verified int
-	var createdAt string
-	err := s.db.QueryRow(
-		`SELECT id, email, password_hash, email_verified, created_at FROM users WHERE email = ?`,
-		email,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &verified, &createdAt)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	user.EmailVerified = verified == 1
-	user.CreatedAt = parseTime(createdAt)
-	return &user, nil
+	return s.get(`SELECT id, email, password_hash, email_verified, created_at FROM users WHERE email = ?`, email)
 }
 
 // GetByID returns a user by ID.
 func (s *UserStore) GetByID(id string) (*User, error) {
+	return s.get(`SELECT id, email, password_hash, email_verified, created_at FROM users WHERE id = ?`, id)
+}
+
+func (s *UserStore) get(query string, arg string) (*User, error) {
 	var user User
 	var verified int
-	var createdAt string
-	err := s.db.QueryRow(
-		`SELECT id, email, password_hash, email_verified, created_at FROM users WHERE id = ?`,
-		id,
-	).Scan(&user.ID, &user.Email, &user.PasswordHash, &verified, &createdAt)
+	var createdAt sql.NullString
+	err := s.db.QueryRow(query, arg).Scan(&user.ID, &user.Email, &user.PasswordHash, &verified, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -77,31 +63,36 @@ func (s *UserStore) GetByID(id string) (*User, error) {
 		return nil, err
 	}
 	user.EmailVerified = verified == 1
-	user.CreatedAt = parseTime(createdAt)
+	if createdAt.Valid {
+		user.CreatedAt = parseTime(createdAt.String)
+	}
 	return &user, nil
+}
+
+// GetOrCreateByEmail returns the user with this email, creating a verified
+// passwordless account if none exists yet (used for invitation acceptance).
+func (s *UserStore) GetOrCreateByEmail(email string) (*User, error) {
+	user, err := s.GetByEmail(email)
+	if err != nil || user != nil {
+		return user, err
+	}
+	user = &User{
+		ID:            newID(),
+		Email:         email,
+		PasswordHash:  "",
+		EmailVerified: true,
+		CreatedAt:     time.Now(),
+	}
+	if err := s.Create(user); err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 // MarkVerified marks a user's email as verified.
 func (s *UserStore) MarkVerified(id string) error {
 	_, err := s.db.Exec(`UPDATE users SET email_verified = 1 WHERE id = ?`, id)
 	return err
-}
-
-func parseTime(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	// SQLite default datetime format: 2006-01-02 15:04:05
-	t, err := time.Parse("2006-01-02 15:04:05", s)
-	if err == nil {
-		return t
-	}
-	// Fallback to RFC3339
-	t, err = time.Parse(time.RFC3339, s)
-	if err == nil {
-		return t
-	}
-	return time.Time{}
 }
 
 // Exists checks whether a user with the given email exists.

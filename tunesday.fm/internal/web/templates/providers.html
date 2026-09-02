@@ -1,0 +1,51 @@
+{{define "content"}}
+<h2>Providers</h2>
+
+<table class="terminal-table">
+    <thead>
+    <tr>
+        <th>name</th>
+        <th>tunes</th>
+        <th>assigned member</th>
+        <th>status</th>
+        {{if eq .Member.Role "admin"}}<th>actions</th>{{end}}
+    </tr>
+    </thead>
+    <tbody>
+    {{range .Providers}}
+    <tr class="{{if .Disabled}}row-disabled{{end}}">
+        <td>{{.Name}}</td>
+        <td>{{.TuneCount}}</td>
+        <td>{{if .MemberEmail}}{{.MemberEmail}}{{else}}<span class="muted">unassigned</span>{{end}}</td>
+        <td>{{if .Disabled}}deactivated{{else}}active{{end}}</td>
+        {{if eq $.Member.Role "admin"}}
+        <td>
+            <form method="POST" action="/teams/{{$.Team.Slug}}/providers/{{.ID}}/rename" class="inline-form">
+                <input type="text" name="name" value="{{.Name}}" required>
+                <button type="submit" class="terminal-btn small">rename</button>
+            </form>
+            <form method="POST" action="/teams/{{$.Team.Slug}}/providers/{{.ID}}/toggle" class="inline-form">
+                <button type="submit" class="terminal-btn small">{{if .Disabled}}enable{{else}}deactivate{{end}}</button>
+            </form>
+            <form method="POST" action="/teams/{{$.Team.Slug}}/providers/{{.ID}}/delete" class="inline-form"
+                  onsubmit="return confirm('Delete provider {{.Name}}?');">
+                <button type="submit" class="terminal-btn small danger">delete</button>
+            </form>
+        </td>
+        {{end}}
+    </tr>
+    {{end}}
+    {{if not .Providers}}
+    <tr><td colspan="5" class="muted">No providers yet.</td></tr>
+    {{end}}
+    </tbody>
+</table>
+
+{{if eq .Member.Role "admin"}}
+<h3>Add provider</h3>
+<form method="POST" action="/teams/{{.Team.Slug}}/providers" class="inline-form">
+    <input type="text" name="name" placeholder="Marcel" required>
+    <button type="submit" class="terminal-btn">add</button>
+</form>
+{{end}}
+{{end}}

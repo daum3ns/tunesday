@@ -154,3 +154,36 @@ func sliceEqual(a, b []string) bool {
 	}
 	return true
 }
+
+func TestComputeProviderPool(t *testing.T) {
+	counts := map[string]int{"alice": 0, "bob": 5, "charlie": 10}
+	pool := ComputeProviderPool([]string{"alice", "bob", "charlie"}, counts, "")
+	if !sliceEqual(pool, []string{"alice", "bob"}) {
+		t.Fatalf("expected [alice bob], got %v", pool)
+	}
+
+	pool = ComputeProviderPool([]string{"alice", "bob", "charlie"}, counts, "alice")
+	if !sliceEqual(pool, []string{"bob"}) {
+		t.Fatalf("expected [bob] after excluding last submitter, got %v", pool)
+	}
+
+	if got := ComputeProviderPool(nil, nil, ""); got != nil {
+		t.Fatalf("expected nil pool for no active providers, got %v", got)
+	}
+}
+
+func TestPoolSeedIsReproducible(t *testing.T) {
+	active := []string{"a", "b", "c", "d", "e"}
+	counts := map[string]int{"a": 0, "b": 1, "c": 2, "d": 3, "e": 4}
+	pool := ComputeProviderPool(active, counts, "b")
+
+	const seed int64 = 1234567890
+	first := pool[rand.New(rand.NewSource(seed)).Intn(len(pool))]
+	second := pool[rand.New(rand.NewSource(seed)).Intn(len(pool))]
+	if first != second {
+		t.Fatalf("same seed must produce same winner, got %q vs %q", first, second)
+	}
+	if first == "b" {
+		t.Fatal("last submitter b must be excluded from pool")
+	}
+}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -8,11 +9,35 @@ import (
 	"testing"
 
 	"tunesday/tunesday.fm/internal/auth"
+	"tunesday/tunesday.fm/internal/ceremony"
 	"tunesday/tunesday.fm/internal/config"
 	"tunesday/tunesday.fm/internal/db"
 	"tunesday/tunesday.fm/internal/email"
 	"tunesday/tunesday.fm/internal/store"
 )
+
+// fakeYouTube is a deterministic playlist.TitleProvider for tests.
+type fakeYouTube struct{}
+
+func (fakeYouTube) NormalizeYouTubeID(raw string) (string, bool) {
+	if idx := strings.Index(raw, "v="); idx != -1 {
+		id := raw[idx+2:]
+		if amp := strings.IndexByte(id, '&'); amp != -1 {
+			id = id[:amp]
+		}
+		if len(id) >= 11 {
+			return id[:11], true
+		}
+	}
+	if strings.HasPrefix(raw, "https://youtu.be/") && len(raw) >= 26 {
+		return raw[17:28], true
+	}
+	return "", false
+}
+
+func (fakeYouTube) FetchTitle(_ context.Context, id string) (string, error) {
+	return "Fake Title " + id, nil
+}
 
 func setupTestHandler(t *testing.T) (*Handler, *db.DB, *email.Service) {
 	t.Helper()
@@ -34,17 +59,28 @@ func setupTestHandler(t *testing.T) (*Handler, *db.DB, *email.Service) {
 		t.Fatalf("open db: %v", err)
 	}
 
-	users := store.NewUserStore(database)
-	verifications := store.NewVerificationTokenStore(database)
-	sessions := auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure)
-	mailer := email.NewService(cfg)
+	deps := Deps{
+		DB:            database,
+		Users:         store.NewUserStore(database),
+		Verifications: store.NewVerificationTokenStore(database),
+		Sessions:      auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure),
+		Email:         email.NewService(cfg),
+		Teams:         store.NewTeamStore(database),
+		Providers:     store.NewProviderStore(database),
+		Members:       store.NewTeamMemberStore(database),
+		Invitations:   store.NewInvitationStore(database),
+		Tunes:         store.NewTuneStore(database),
+		Ceremonies:    store.NewCeremonyStore(database),
+		Rooms:         ceremony.NewManager(),
+		YT:            fakeYouTube{},
+	}
 
-	h, err := NewHandler(cfg, users, verifications, sessions, mailer)
+	h, err := NewHandler(cfg, deps)
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
 	}
 
-	return h, database, mailer
+	return h, database, deps.Email
 }
 
 func TestRegisterAndVerify(t *testing.T) {
@@ -123,7 +159,7 @@ func TestLoginUnverified(t *testing.T) {
 	defer db.Close()
 
 	// Create an unverified user directly
-	user, err := h.users.GetByEmail("unverified@example.com")
+	user, err := h.deps.Users.GetByEmail("unverified@example.com")
 	if err != nil {
 		t.Fatalf("get user: %v", err)
 	}
@@ -136,7 +172,7 @@ func TestLoginUnverified(t *testing.T) {
 		t.Fatalf("hash password: %v", err)
 	}
 
-	if err := h.users.Create(&store.User{
+	if err := h.deps.Users.Create(&store.User{
 		ID:            "test-user-id",
 		Email:         "unverified@example.com",
 		PasswordHash:  hash,
@@ -171,7 +207,7 @@ func TestAuthMiddleware(t *testing.T) {
 		t.Fatalf("hash password: %v", err)
 	}
 
-	if err := h.users.Create(&store.User{
+	if err := h.deps.Users.Create(&store.User{
 		ID:            "test-user-id",
 		Email:         "verified@example.com",
 		PasswordHash:  hash,
@@ -202,7 +238,7 @@ func TestAuthMiddleware(t *testing.T) {
 	}
 	rr = httptest.NewRecorder()
 
-	protected := auth.Middleware(h.sessions, h.users)(http.HandlerFunc(h.Onboarding))
+	protected := auth.Middleware(h.deps.Sessions, h.deps.Users)(http.HandlerFunc(h.Onboarding))
 	protected.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {

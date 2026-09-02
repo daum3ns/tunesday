@@ -13,19 +13,32 @@ body {
     align-items: center;
     min-height: 100vh;
     padding: 1rem;
-    gap: 1.5rem;
+    gap: 1rem;
 }
 
 #header {
-    font-size: clamp(4px, 0.9vw, 14px);
+    font-size: clamp(3px, 0.9vw, 14px);
     line-height: 1.1;
     white-space: pre;
     color: #fff;
 }
 
 main {
-    max-width: 640px;
+    max-width: 720px;
     width: 100%;
+}
+
+h2 {
+    margin-bottom: 0.75rem;
+}
+
+h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+code {
+    color: #0f0;
 }
 
 .terminal-box {
@@ -36,7 +49,27 @@ main {
 }
 
 .terminal-box p {
-    margin-bottom: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.terminal-nav {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-wrap: wrap;
+    max-width: 720px;
+    width: 100%;
+}
+
+.team-title {
+    font-size: clamp(11px, 1.8vw, 15px);
+    color: #0f0;
+    max-width: 720px;
+    width: 100%;
+}
+
+.team-slug {
+    color: #080;
 }
 
 .terminal-btn {
@@ -48,6 +81,8 @@ main {
     margin-right: 0.5rem;
     text-decoration: none;
     cursor: pointer;
+    font-family: inherit;
+    font-size: 1em;
 }
 
 .terminal-btn:hover {
@@ -55,11 +90,45 @@ main {
     color: #000;
 }
 
+.terminal-btn.small {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.85em;
+}
+
+.terminal-btn.danger {
+    border-color: #f00;
+    color: #f00;
+}
+
+.terminal-btn.danger:hover {
+    background: #f00;
+    color: #000;
+}
+
+.terminal-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.terminal-btn.active {
+    background: #0f0;
+    color: #000;
+}
+
 .terminal-message {
     color: #0f0;
-    margin-bottom: 1rem;
-    border: 1px solid #0f0;
+    border: 1px dashed #0f0;
     padding: 0.5rem;
+}
+
+.terminal-error {
+    color: #f00;
+    border: 1px dashed #f00;
+    padding: 0.5rem;
+}
+
+.muted {
+    color: #080;
 }
 
 label {
@@ -70,7 +139,9 @@ label {
 
 input[type="email"],
 input[type="password"],
-input[type="text"] {
+input[type="text"],
+input[type="file"],
+select {
     width: 100%;
     background: #000;
     color: #0f0;
@@ -78,22 +149,242 @@ input[type="text"] {
     padding: 0.5rem;
     font-family: inherit;
     font-size: 1em;
+    margin-bottom: 0.25rem;
 }
 
-input:focus {
+input:focus, select:focus {
     outline: none;
     box-shadow: 0 0 5px #0f0;
 }
 
 form {
-    margin-top: 1rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 form .terminal-btn {
-    margin-top: 1rem;
+    margin-top: 0.75rem;
+}
+
+.inline-form {
+    display: inline-flex;
+    gap: 0.4rem;
+    align-items: center;
+    margin: 0.2rem 0;
+}
+
+.inline-form input[type="text"] {
+    width: auto;
 }
 
 a {
     color: #0f0;
 }
 
+.terminal-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+
+.terminal-table th,
+.terminal-table td {
+    border-bottom: 1px solid #040;
+    padding: 0.4rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.terminal-table th {
+    color: #0f0;
+    border-bottom-color: #0f0;
+}
+
+.row-disabled td {
+    opacity: 0.45;
+}
+
+.stat-grid {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.stat {
+    border: 1px solid #040;
+    padding: 0.5rem 0.75rem;
+}
+
+.stat-num {
+    color: #fff;
+    font-size: 1.4em;
+}
+
+.team-list, .tune-list {
+    list-style: none;
+    padding-left: 0;
+}
+
+.team-list li, .tune-list li {
+    padding: 0.2rem 0;
+}
+
+.team-list li::before {
+    content: "▶ ";
+    color: #0f0;
+}
+
+.tune-list li::before {
+    content: "♪ ";
+    color: #0f0;
+}
+
+/* ---- The Tunesday Roulette ---- */
+
+.share-box {
+    border: 1px dashed #080;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.share-box code { word-break: break-all; }
+
+#roulette { margin: 1rem 0; }
+
+#turntable {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: center;
+    padding: 1.5rem 0;
+    border-bottom: 1px solid #040;
+}
+
+.vinyl {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at center, #0f0 0 6px, #000 6px 8px, #050505 8px);
+    border: 2px solid #0f0;
+    box-shadow: 0 0 4px #040, inset 0 0 0 3px #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: spin 4s linear infinite;
+    position: relative;
+}
+
+.vinyl::before {
+    content: "";
+    position: absolute;
+    inset: 14px;
+    border-radius: 50%;
+    background: repeating-radial-gradient(circle, #1a1a1a 0 2px, #000 2px 4px);
+}
+
+.vinyl-label {
+    position: relative;
+    z-index: 1;
+    background: #0f0;
+    color: #000;
+    border-radius: 50%;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 7px;
+    font-weight: bold;
+    text-align: center;
+    overflow: hidden;
+    word-break: break-all;
+}
+
+.vinyl.spinning-fast {
+    animation: spin 0.15s linear infinite;
+    box-shadow: 0 0 14px #0f0;
+    transform: scale(1.1);
+}
+
+.vinyl.winner-record {
+    animation: spin 0.6s linear infinite, pulse 0.4s ease-in-out infinite alternate;
+    border-color: #fff;
+    box-shadow: 0 0 22px #0f0, 0 0 60px #0f0;
+    transform: scale(1.25);
+}
+
+.vinyl.loser-record {
+    animation: none;
+    opacity: 0.25;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.8); } }
+
+#drum-status {
+    text-align: center;
+    color: #0a0;
+    margin-top: 0.5rem;
+    min-height: 1.4em;
+}
+
+.attendee-list { list-style: none; }
+.attendee-list li { padding: 0.15rem 0; }
+
+#host-zone { text-align: center; margin: 1.5rem 0; }
+
+.terminal-btn.big {
+    font-size: 1.25em;
+    padding: 0.9rem 2rem;
+    letter-spacing: 2px;
+    border-width: 2px;
+    animation: glow 1.6s ease-in-out infinite alternate;
+}
+
+.terminal-btn.big:not(:disabled):hover {
+    animation: none;
+    background: #0f0;
+    color: #000;
+}
+
+@keyframes glow {
+    from { box-shadow: 0 0 4px #0f0; }
+    to { box-shadow: 0 0 20px #0f0; }
+}
+
+#winner-zone { margin-top: 1.5rem; text-align: center; }
+
+#big-winner {
+    color: #fff;
+    background: #010;
+    border: 2px solid #0f0;
+    display: inline-block;
+    padding: 1rem 1.5rem;
+    text-align: center;
+    font-size: clamp(10px, 2.5vw, 16px);
+    line-height: 1.4;
+    white-space: pre;
+    animation: pulse 0.5s ease-in-out infinite alternate;
+}
+
+#tune-zone {
+    border: 1px dashed #0f0;
+    padding: 1rem;
+    margin-top: 1rem;
+    text-align: left;
+}
+
+.confetti {
+    position: fixed;
+    top: -20px;
+    color: #0f0;
+    z-index: 999;
+    pointer-events: none;
+    animation: fall linear forwards;
+}
+
+@keyframes fall {
+    to { transform: translateY(105vh) rotate(720deg); }
+}

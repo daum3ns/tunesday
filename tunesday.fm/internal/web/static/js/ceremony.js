@@ -1,0 +1,289 @@
+(function () {
+    "use strict";
+
+    var script = document.currentScript;
+    var wsPath = script.getAttribute("data-ws");
+    var revealPath = script.getAttribute("data-reveal");
+
+    var statusEl = document.getElementById("drum-status");
+    var turntable = document.getElementById("turntable");
+    var attendeesEl = document.getElementById("attendees");
+    var revealBtn = document.getElementById("reveal-btn");
+    var hostHint = document.getElementById("host-hint");
+    var winnerZone = document.getElementById("winner-zone");
+    var bigWinner = document.getElementById("big-winner");
+    var tuneZone = document.getElementById("tune-zone");
+    var completeInfo = document.getElementById("complete-info");
+    var sessionUrl = document.getElementById("session-url");
+    var copyLink = document.getElementById("copy-link");
+
+    var myProvider = null;
+    var revealed = false;
+    var ws = null;
+
+    if (sessionUrl) sessionUrl.textContent = location.href.replace(/\/host\/?$/, "");
+    if (copyLink) copyLink.addEventListener("click", function () {
+        navigator.clipboard.writeText(sessionUrl.textContent).then(function () {
+            copyLink.textContent = "copied!";
+            setTimeout(function () { copyLink.textContent = "copy"; }, 1500);
+        });
+    });
+
+    function connect() {
+        var proto = location.protocol === "https:" ? "wss://" : "ws://";
+        ws = new WebSocket(proto + location.host + wsPath);
+        ws.onmessage = function (ev) {
+            var msg = JSON.parse(ev.data);
+            handleMessage(msg);
+        };
+        ws.onclose = function () {
+            statusEl.textContent = "broadcast lost… reconnecting";
+            setTimeout(connect, 2000);
+        };
+    }
+
+    function handleMessage(msg) {
+        if (msg.type === "state") applyState(msg.payload);
+        else if (msg.type === "attendees") renderAttendees(msg.payload.attendees);
+        else if (msg.type === "reveal") runRoulette(msg.payload);
+        else if (msg.type === "complete") showCompleted(msg.payload);
+    }
+
+    function applyState(st) {
+        renderAttendees(st.attendees || []);
+        for (var i = 0; i < (st.attendees || []).length; i++) {
+            if (st.attendees[i].isYou) myProvider = st.attendees[i].provider;
+        }
+        if (st.status === "open") {
+            statusEl.textContent = "the turntable hums, waiting for the needle…";
+            if (revealBtn) {
+                revealBtn.disabled = true;
+                revealBtn.textContent = "⬇ Drop the Needle";
+            }
+            if (st.canReveal === false && revealBtn) hostHint.textContent = "the needle has already dropped";
+        } else {
+            revealed = true;
+            winnerZone.hidden = false;
+            bigWinner.textContent = winnerBanner(st.winner || "?");
+            statusEl.textContent = "the verdict is in.";
+            if (st.youWin || st.canAddTune) tuneZone.hidden = !st.canAddTune;
+            if (st.status === "completed") {
+                showCompletedStatic(st);
+            }
+            hideReveal();
+        }
+    }
+
+    function renderAttendees(list) {
+        attendeesEl.innerHTML = "";
+        turntable.innerHTML = "";
+        if (!list.length) {
+            var li = document.createElement("li");
+            li.className = "muted";
+            li.textContent = "nobody connected yet — be the first record!";
+            attendeesEl.appendChild(li);
+            statusEl.textContent = "waiting for at least two spinning records…";
+        }
+        list.forEach(function (a) {
+            var li = document.createElement("li");
+            li.textContent = "⏻ " + a.alias + (a.provider ? "  [ " + a.provider + " ]" : "") + (a.isYou ? "  ← you" : "");
+            attendeesEl.appendChild(li);
+
+            var disc = document.createElement("div");
+            disc.className = "vinyl";
+            disc.dataset.provider = a.provider || a.alias;
+            var label = document.createElement("span");
+            label.className = "vinyl-label";
+            label.textContent = disc.dataset.provider;
+            disc.appendChild(label);
+            turntable.appendChild(disc);
+        });
+        if (revealBtn && list.length < 2 && !revealed) {
+            revealBtn.disabled = true;
+            hostHint.textContent = "need at least 2 spinning records (connected: " + list.length + ")";
+        } else if (revealBtn && !revealed) {
+            revealBtn.disabled = false;
+            hostHint.textContent = "all systems nominal. the algorithm grows restless.";
+        }
+    }
+
+    if (revealBtn) revealBtn.addEventListener("click", function () {
+        revealBtn.disabled = true;
+        fetch(revealPath, { method: "POST" }).then(function (res) {
+            if (!res.ok) {
+                return res.text().then(function (t) {
+                    statusEl.textContent = t || "the needle jammed";
+                    revealBtn.disabled = false;
+                });
+            }
+            // the broadcast will carry the reveal to every screen
+        });
+    });
+
+    // The synchronized ridiculous part.
+    function runRoulette(payload) {
+        revealed = true;
+        hideReveal();
+        var pool = payload.pool || [];
+        var winner = payload.winner;
+        var duration = payload.duration_ms || 2500;
+
+        var discs = Array.prototype.slice.call(turntable.querySelectorAll(".vinyl"));
+        var candidates = discs.filter(function (d) {
+            return pool.indexOf(d.dataset.provider) !== -1;
+        });
+        if (!candidates.length) candidates = discs;
+
+        drumroll(duration);
+        statusEl.textContent = "the needle descends… the records tremble…";
+
+        var start = performance.now();
+        var idx = Math.floor(Math.random() * candidates.length);
+        function shuffleStep() {
+            var elapsed = performance.now() - start;
+            if (elapsed >= duration) {
+                landOn(candidates, winner, pool);
+                return;
+            }
+            candidates.forEach(function (d) { d.classList.remove("spinning-fast"); });
+            idx = (idx + 1 + Math.floor(Math.random() * (candidates.length - 1))) % candidates.length;
+            candidates[idx].classList.add("spinning-fast");
+            // ease-out: the shuffle slows down as the needle approaches
+            var progress = elapsed / duration;
+            var delay = 40 + progress * progress * 600;
+            setTimeout(shuffleStep, delay);
+        }
+        shuffleStep();
+    }
+
+    function landOn(candidates, winner, pool) {
+        candidates.forEach(function (d) {
+            d.classList.remove("spinning-fast");
+            if (d.dataset.provider === winner) {
+                d.classList.add("winner-record");
+            } else if (pool.indexOf(d.dataset.provider) !== -1) {
+                d.classList.add("loser-record");
+            }
+        });
+        winnerZone.hidden = false;
+        bigWinner.textContent = winnerBanner(winner);
+        statusEl.textContent = "the algorithm has spoken.";
+        confetti();
+        fanfare();
+        speak("The Algorithm has spoken. Today, " + winner + ", shall provide the tunes.");
+        if (myProvider && myProvider === winner) {
+            tuneZone.hidden = false;
+        }
+    }
+
+    function showCompleted(payload) {
+        tuneZone.hidden = true;
+        completeInfo.hidden = false;
+        completeInfo.textContent = "♪ registered: " + payload.title + " provided by " + payload.provider + ". Happy Tunesday!";
+    }
+
+    function showCompletedStatic(st) {
+        if (st.tuneTitle) {
+            completeInfo.hidden = false;
+            completeInfo.textContent = "♪ registered: " + st.tuneTitle;
+        }
+    }
+
+    function hideReveal() {
+        if (revealBtn) {
+            revealBtn.disabled = true;
+            revealBtn.style.display = "none";
+            if (hostHint) hostHint.style.display = "none";
+        }
+    }
+
+    function winnerBanner(name) {
+        var inner = "*** THE ALGORITHM HAS SPOKEN ***";
+        var line = "═".repeat(Math.max(inner.length, name.length) + 8);
+        return line + "\n" +
+            "   >>  " + inner + "  <<\n" +
+            "        ▼ ▼ ▼\n" +
+            "    ★ " + name.toUpperCase() + " ★\n" +
+            "   provides today's soundtrack\n" +
+            line;
+    }
+
+    // ---- sound: terminal-grade percussion, all Web Audio, no assets ----
+
+    function audioCtx() {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        if (!audioCtx.ctx) audioCtx.ctx = new AC();
+        return audioCtx.ctx;
+    }
+
+    function drumroll(duration) {
+        var ctx = audioCtx();
+        if (!ctx || ctx.state === "suspended") { if (ctx) ctx.resume(); return; }
+        var t = ctx.currentTime;
+        var end = t + duration / 1000 * 0.9;
+        var step = 0.035;
+        while (t < end) {
+            tick(ctx, t);
+            t += step;
+            step *= 0.996; // accelerate
+        }
+    }
+
+    function tick(ctx, when) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 90 + Math.random() * 60;
+        gain.gain.setValueAtTime(0.08, when);
+        gain.gain.exponentialRampToValueAtTime(0.001, when + 0.04);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(when);
+        osc.stop(when + 0.05);
+    }
+
+    function fanfare() {
+        var ctx = audioCtx();
+        if (!ctx) return;
+        if (ctx.state === "suspended") ctx.resume();
+        [523.25, 659.25, 783.99, 1046.5].forEach(function (f, i) {
+            var osc = ctx.createOscillator();
+            var gain = ctx.createGain();
+            osc.type = "triangle";
+            osc.frequency.value = f;
+            var when = ctx.currentTime + i * 0.16;
+            gain.gain.setValueAtTime(0.15, when);
+            gain.gain.exponentialRampToValueAtTime(0.001, when + 0.5);
+            osc.connect(gain).connect(ctx.destination);
+            osc.start(when);
+            osc.stop(when + 0.55);
+        });
+    }
+
+    function speak(text) {
+        if (!("speechSynthesis" in window)) return;
+        try {
+            var u = new SpeechSynthesisUtterance(text);
+            u.rate = 0.85;
+            u.pitch = 0.4;
+            speechSynthesis.speak(u);
+        } catch (e) { /* the robot stays silent */ }
+    }
+
+    function confetti() {
+        var chars = ["█", "▓", "▒", "░", "♪", "♫"];
+        for (var i = 0; i < 80; i++) {
+            var s = document.createElement("span");
+            s.className = "confetti";
+            s.textContent = chars[Math.floor(Math.random() * chars.length)];
+            s.style.left = Math.random() * 100 + "vw";
+            s.style.animationDuration = (2 + Math.random() * 2.5) + "s";
+            s.style.animationDelay = (Math.random() * 0.7) + "s";
+            s.style.fontSize = (10 + Math.random() * 18) + "px";
+            document.body.appendChild(s);
+            setTimeout(function (el) { return function () { el.remove(); }; }(s), 5000);
+        }
+    }
+
+    connect();
+})();

@@ -5,12 +5,16 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/google/uuid"
 
+	"tunesday/internal/playlist"
 	"tunesday/tunesday.fm/internal/auth"
+	"tunesday/tunesday.fm/internal/ceremony"
 	"tunesday/tunesday.fm/internal/config"
+	"tunesday/tunesday.fm/internal/db"
 	"tunesday/tunesday.fm/internal/email"
 	"tunesday/tunesday.fm/internal/store"
 )
@@ -21,19 +25,38 @@ var templatesFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
+// Deps bundles the services a web handler needs.
+type Deps struct {
+	DB            *db.DB
+	Users         *store.UserStore
+	Verifications *store.VerificationTokenStore
+	Sessions      *auth.SessionStore
+	Email         *email.Service
+	Teams         *store.TeamStore
+	Providers     *store.ProviderStore
+	Members       *store.TeamMemberStore
+	Invitations   *store.InvitationStore
+	Tunes         *store.TuneStore
+	Ceremonies    *store.CeremonyStore
+	Rooms         *ceremony.Manager
+	YT            playlist.TitleProvider
+}
+
 // Handler holds the web handlers and templates.
 type Handler struct {
-	tmpls         map[string]*template.Template
-	cfg           *config.Config
-	users         *store.UserStore
-	verifications *store.VerificationTokenStore
-	sessions      *auth.SessionStore
-	email         *email.Service
+	tmpls map[string]*template.Template
+	cfg   *config.Config
+	deps  Deps
 }
 
 // NewHandler creates a new web handler, parsing embedded templates.
-func NewHandler(cfg *config.Config, users *store.UserStore, verifications *store.VerificationTokenStore, sessions *auth.SessionStore, email *email.Service) (*Handler, error) {
-	pages := []string{"base.html", "landing.html", "register.html", "login.html", "verify.html"}
+func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
+	pages := []string{
+		"base.html", "landing.html", "register.html", "login.html",
+		"verify.html", "message.html", "onboarding.html", "team_new.html",
+		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
+		"ceremony.html",
+	}
 	tmpls := make(map[string]*template.Template)
 	for _, page := range pages {
 		tmpl, err := template.ParseFS(templatesFS, "templates/base.html", "templates/"+page)
@@ -42,14 +65,7 @@ func NewHandler(cfg *config.Config, users *store.UserStore, verifications *store
 		}
 		tmpls[page] = tmpl
 	}
-	return &Handler{
-		tmpls:         tmpls,
-		cfg:           cfg,
-		users:         users,
-		verifications: verifications,
-		sessions:      sessions,
-		email:         email,
-	}, nil
+	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps}, nil
 }
 
 // StaticFiles returns an http.Handler for embedded static assets.
@@ -61,12 +77,26 @@ func (h *Handler) StaticFiles() http.Handler {
 	return http.FileServer(http.FS(staticSub))
 }
 
-func (h *Handler) render(w http.ResponseWriter, page string, data map[string]any) {
+func (h *Handler) render(w http.ResponseWriter, r *http.Request, page string, data map[string]any) {
 	if data == nil {
 		data = map[string]any{}
 	}
 	if _, ok := data["Header"]; !ok {
 		data["Header"] = headerASCII()
+	}
+	if _, ok := data["CurrentUser"]; !ok {
+		data["CurrentUser"] = auth.UserFromContext(r.Context())
+	}
+	if q := r.URL.Query(); len(q) > 0 {
+		if msg := q.Get("ok"); msg != "" {
+			if _, exists := data["Message"]; !exists {
+				data["Message"] = msg
+			}
+		} else if msg := q.Get("err"); msg != "" {
+			if _, exists := data["Error"]; !exists {
+				data["Error"] = msg
+			}
+		}
 	}
 	tmpl, ok := h.tmpls[page]
 	if !ok {
@@ -78,16 +108,21 @@ func (h *Handler) render(w http.ResponseWriter, page string, data map[string]any
 	}
 }
 
+// redirectFlash sends a Post/Redirect/Get with an ok or err message in the query.
+func redirectFlash(w http.ResponseWriter, r *http.Request, to, key, msg string) {
+	http.Redirect(w, r, to+"?"+key+"="+url.QueryEscape(msg), http.StatusSeeOther)
+}
+
 // Landing renders the landing page.
 func (h *Handler) Landing(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "landing.html", map[string]any{
+	h.render(w, r, "landing.html", map[string]any{
 		"Title": "tunesday.fm",
 	})
 }
 
 // RegisterPage renders the registration form.
 func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "register.html", map[string]any{
+	h.render(w, r, "register.html", map[string]any{
 		"Title": "Register",
 	})
 }
@@ -95,10 +130,7 @@ func (h *Handler) RegisterPage(w http.ResponseWriter, r *http.Request) {
 // Register handles registration form submission.
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Invalid form",
-		})
+		h.render(w, r, "register.html", flash(map[string]any{"Title": "Register"}, "Invalid form"))
 		return
 	}
 
@@ -106,44 +138,32 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	password := r.FormValue("password")
 	passwordConfirm := r.FormValue("password_confirm")
 
+	fail := func(msg string) {
+		h.render(w, r, "register.html", flash(map[string]any{"Title": "Register"}, msg))
+	}
+
 	if emailAddr == "" || password == "" {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Email and password are required",
-		})
+		fail("Email and password are required")
 		return
 	}
-
 	if password != passwordConfirm {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Passwords do not match",
-		})
+		fail("Passwords do not match")
 		return
 	}
 
-	exists, err := h.users.Exists(emailAddr)
+	exists, err := h.deps.Users.Exists(emailAddr)
 	if err != nil {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Something went wrong",
-		})
+		fail("Something went wrong")
 		return
 	}
 	if exists {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "An account with this email already exists",
-		})
+		fail("An account with this email already exists")
 		return
 	}
 
 	hash, err := auth.HashPassword(password, h.cfg.BcryptCost)
 	if err != nil {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Something went wrong",
-		})
+		fail("Something went wrong")
 		return
 	}
 
@@ -154,11 +174,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		EmailVerified: false,
 		CreatedAt:     time.Now(),
 	}
-	if err := h.users.Create(user); err != nil {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Could not create account",
-		})
+	if err := h.deps.Users.Create(user); err != nil {
+		fail("Could not create account")
 		return
 	}
 
@@ -169,23 +186,17 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		Used:      false,
 		CreatedAt: time.Now(),
 	}
-	if err := h.verifications.Create(token); err != nil {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Could not create verification token",
-		})
+	if err := h.deps.Verifications.Create(token); err != nil {
+		fail("Could not create verification token")
 		return
 	}
 
-	if err := h.email.SendVerificationEmail(user.Email, token.Token); err != nil {
-		h.render(w, "register.html", map[string]any{
-			"Title":   "Register",
-			"Message": "Account created, but failed to send verification email: " + err.Error(),
-		})
+	if err := h.deps.Email.SendVerificationEmail(user.Email, token.Token); err != nil {
+		fail("Account created, but failed to send verification email: " + err.Error())
 		return
 	}
 
-	h.render(w, "verify.html", map[string]any{
+	h.render(w, r, "verify.html", map[string]any{
 		"Title":   "Verify your email",
 		"Message": "Check your inbox for a verification link.",
 	})
@@ -193,110 +204,79 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 // Verify handles the email verification link.
 func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
+	page := func(title, msg string) {
+		h.render(w, r, "verify.html", map[string]any{"Title": title, "Message": msg})
+	}
+
 	tokenValue := r.URL.Query().Get("token")
 	if tokenValue == "" {
-		h.render(w, "verify.html", map[string]any{
-			"Title":   "Verification",
-			"Message": "Missing verification token",
-		})
+		page("Verification", "Missing verification token")
 		return
 	}
 
-	token, err := h.verifications.GetByToken(tokenValue)
+	token, err := h.deps.Verifications.GetByToken(tokenValue)
 	if err != nil {
-		h.render(w, "verify.html", map[string]any{
-			"Title":   "Verification",
-			"Message": "Something went wrong",
-		})
+		page("Verification", "Something went wrong")
 		return
 	}
 	if token == nil || token.Used {
-		h.render(w, "verify.html", map[string]any{
-			"Title":   "Verification",
-			"Message": "Invalid or already used verification token",
-		})
+		page("Verification", "Invalid or already used verification token")
 		return
 	}
 
-	if err := h.users.MarkVerified(token.UserID); err != nil {
-		h.render(w, "verify.html", map[string]any{
-			"Title":   "Verification",
-			"Message": "Could not verify email",
-		})
+	if err := h.deps.Users.MarkVerified(token.UserID); err != nil {
+		page("Verification", "Could not verify email")
+		return
+	}
+	if err := h.deps.Verifications.MarkUsed(token.ID); err != nil {
+		page("Verification", "Could not mark token as used")
 		return
 	}
 
-	if err := h.verifications.MarkUsed(token.ID); err != nil {
-		h.render(w, "verify.html", map[string]any{
-			"Title":   "Verification",
-			"Message": "Could not mark token as used",
-		})
-		return
-	}
-
-	h.render(w, "verify.html", map[string]any{
-		"Title":   "Verification",
-		"Message": "Email verified! You can now log in.",
-	})
+	page("Verification", "Email verified! You can now log in.")
 }
 
 // LoginPage renders the login form.
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login.html", map[string]any{
+	h.render(w, r, "login.html", map[string]any{
 		"Title": "Login",
 	})
 }
 
 // Login handles login form submission.
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	fail := func(msg string) {
+		h.render(w, r, "login.html", flash(map[string]any{"Title": "Login"}, msg))
+	}
+
 	if err := r.ParseForm(); err != nil {
-		h.render(w, "login.html", map[string]any{
-			"Title":   "Login",
-			"Message": "Invalid form",
-		})
+		fail("Invalid form")
 		return
 	}
 
 	emailAddr := r.FormValue("email")
 	password := r.FormValue("password")
 
-	user, err := h.users.GetByEmail(emailAddr)
+	user, err := h.deps.Users.GetByEmail(emailAddr)
 	if err != nil {
-		h.render(w, "login.html", map[string]any{
-			"Title":   "Login",
-			"Message": "Something went wrong",
-		})
+		fail("Something went wrong")
 		return
 	}
 	if user == nil {
-		h.render(w, "login.html", map[string]any{
-			"Title":   "Login",
-			"Message": "Invalid email or password",
-		})
+		fail("Invalid email or password")
 		return
 	}
-
 	if !auth.CheckPassword(password, user.PasswordHash) {
-		h.render(w, "login.html", map[string]any{
-			"Title":   "Login",
-			"Message": "Invalid email or password",
-		})
+		fail("Invalid email or password")
 		return
 	}
-
 	if !user.EmailVerified {
-		h.render(w, "login.html", map[string]any{
-			"Title":   "Login",
-			"Message": "Please verify your email before logging in",
-		})
+		fail("Please verify your email before logging in")
 		return
 	}
 
-	if err := h.sessions.SetUserID(w, r, user.ID); err != nil {
-		h.render(w, "login.html", map[string]any{
-			"Title":   "Login",
-			"Message": "Could not create session",
-		})
+	if err := h.deps.Sessions.SetUserID(w, r, user.ID); err != nil {
+		fail("Could not create session")
 		return
 	}
 
@@ -305,15 +285,13 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout clears the session.
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	_ = h.sessions.Clear(w, r)
+	_ = h.deps.Sessions.Clear(w, r)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// Onboarding renders the onboarding page.
-func (h *Handler) Onboarding(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "landing.html", map[string]any{
-		"Title": "Welcome",
-	})
+func flash(data map[string]any, msg string) map[string]any {
+	data["Error"] = msg
+	return data
 }
 
 func headerASCII() string {

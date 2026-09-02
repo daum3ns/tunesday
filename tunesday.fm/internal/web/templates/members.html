@@ -1,0 +1,95 @@
+{{define "content"}}
+<h2>Members</h2>
+
+<table class="terminal-table">
+    <thead>
+    <tr>
+        <th>email</th>
+        <th>provider</th>
+        <th>role</th>
+        {{if eq .Member.Role "admin"}}<th>actions</th>{{end}}
+    </tr>
+    </thead>
+    <tbody>
+    {{$team := .Team}}{{$me := .Member}}
+    {{range .Members}}
+    <tr>
+        <td>{{.Email}}{{if eq .UserID $me.UserID}} <span class="muted">(you)</span>{{end}}</td>
+        <td>{{.ProviderName}}</td>
+        <td>{{.Role}}</td>
+        {{if eq $me.Role "admin"}}
+        <td>
+            {{if ne .UserID $me.UserID}}
+            <form method="POST" action="/teams/{{$team.Slug}}/members/{{.UserID}}/role" class="inline-form">
+                <input type="hidden" name="role" value="{{if eq .Role "admin"}}member{{else}}admin{{end}}">
+                <button type="submit" class="terminal-btn small">
+                    {{if eq .Role "admin"}}demote{{else}}promote{{end}}
+                </button>
+            </form>
+            {{end}}
+            <form method="POST" action="/teams/{{$team.Slug}}/members/{{.UserID}}/remove" class="inline-form"
+                  onsubmit="return confirm('Remove {{.Email}} from the team?');">
+                <button type="submit" class="terminal-btn small danger">remove</button>
+            </form>
+        </td>
+        {{end}}
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+
+{{if eq .Member.Role "admin"}}
+<h3>Invite a member</h3>
+<form method="POST" action="/teams/{{.Team.Slug}}/members">
+    <label>Email</label>
+    <input type="email" name="email" required placeholder="teammate@example.com">
+    <label>Provider name (optional — leave empty to let them choose on join)</label>
+    <input type="text" name="provider_name" placeholder="e.g. Lukas">
+    <button type="submit" class="terminal-btn">send invitation</button>
+</form>
+
+{{if .Providers}}
+<h3>Assign providers</h3>
+<table class="terminal-table">
+    <thead>
+    <tr><th>member</th><th>move to provider</th><th></th></tr>
+    </thead>
+    <tbody>
+    {{$team := .Team}}
+    {{range .Members}}
+    {{$memberID := .UserID}}{{$current := .ProviderID}}
+    <tr>
+    <form method="POST" action="/teams/{{$team.Slug}}/members/{{.UserID}}/provider">
+        <td>{{.Email}} <span class="muted">(currently {{.ProviderName}})</span></td>
+        <td>
+            <select name="provider_id">
+                {{range $.Providers}}
+                <option value="{{.ID}}" {{if eq .ID $current}}selected{{end}}
+                    {{if and .MemberUserID (ne .MemberUserID $memberID)}}disabled{{end}}>
+                    {{.Name}}{{if and .MemberUserID (ne .MemberUserID $memberID)}} — taken{{end}}
+                </option>
+                {{end}}
+            </select>
+        </td>
+        <td><button type="submit" class="terminal-btn small">assign</button></td>
+    </form>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .PendingInvites}}
+<h3>Pending invitations</h3>
+<ul class="team-list">
+    {{range .PendingInvites}}
+    <li>
+        {{.Email}}
+        <span class="muted">(share manually: {{.Token}})</span>
+    </li>
+    {{end}}
+</ul>
+<p class="muted">Magic links stay valid until you remove the member.</p>
+{{end}}
+{{end}}
+{{end}}

@@ -1,0 +1,35 @@
+{{define "content"}}
+<h2>Dashboard</h2>
+
+<div class="stat-grid">
+    <div class="stat"><span class="stat-num">{{.EligibleCount}}</span> eligible providers</div>
+    <div class="stat"><span class="stat-num">{{.MemberCount}}</span> members</div>
+    <div class="stat"><span class="stat-num">{{.TuneCount}}</span> tunes</div>
+</div>
+
+<h3>The Ceremony</h3>
+{{if ge .EligibleCount 2}}
+<p>Two to four records keep spinning. One needle drops. Only the Algorithm decides.</p>
+{{if eq .Member.Role "admin"}}
+<form method="POST" action="/teams/{{.Team.Slug}}/ceremonies">
+    <button type="submit" class="terminal-btn big">▶ Start the Tunesday Roulette</button>
+</form>
+{{else}}
+<p class="muted">Only admins can start a ceremony.</p>
+{{end}}
+{{else}}
+<p class="terminal-error">Need at least 2 eligible (assigned + active) providers to run a ceremony.</p>
+<p><a class="terminal-btn" href="/teams/{{.Team.Slug}}/members">Invite members</a></p>
+{{end}}
+
+<h3>Recent tunes</h3>
+{{if .RecentTunes}}
+<ul class="tune-list">
+    {{range .RecentTunes}}
+    <li>♪ {{.Title}} <span class="muted">({{.ProviderName}}, {{.AddedAt.Format "2006-01-02"}})</span></li>
+    {{end}}
+</ul>
+{{else}}
+<p class="muted">No tunes imported yet.</p>
+{{end}}
+{{end}}

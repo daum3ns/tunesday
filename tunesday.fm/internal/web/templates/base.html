@@ -3,15 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Title}}</title>
+    <title>{{.Title}} — tunesday.fm</title>
     <link rel="stylesheet" href="/static/css/terminal.css">
 </head>
 <body>
     <pre id="header">{{.Header}}</pre>
+    <nav class="terminal-nav">
+        <a href="/" class="terminal-btn">home</a>
+        {{if .CurrentUser}}
+        <a href="/onboarding" class="terminal-btn">my teams</a>
+        <form method="POST" action="/logout" class="inline-form">
+            <button type="submit" class="terminal-btn">log out</button>
+        </form>
+        {{else}}
+        <a href="/login" class="terminal-btn">login</a>
+        <a href="/register" class="terminal-btn">register</a>
+        {{end}}
+    </nav>
+    {{if .Team}}
+    <div class="team-title">[ {{.Team.Name}} ] <span class="team-slug">/teams/{{.Team.Slug}}</span></div>
+    <nav class="terminal-nav">
+        <a href="/teams/{{.Team.Slug}}/dashboard" class="terminal-btn {{if eq .Tab "dashboard"}}active{{end}}">dashboard</a>
+        <a href="/teams/{{.Team.Slug}}/members" class="terminal-btn {{if eq .Tab "members"}}active{{end}}">members</a>
+        <a href="/teams/{{.Team.Slug}}/providers" class="terminal-btn {{if eq .Tab "providers"}}active{{end}}">providers</a>
+        {{if .CeremonyPath}}
+        <a href="{{.CeremonyPath}}" class="terminal-btn {{if eq .Tab "ceremony"}}active{{end}}">ceremony</a>
+        {{end}}
+    </nav>
+    {{end}}
     <main>
         <div class="terminal-box">
+            {{if .Error}}
+            <p class="terminal-error">&gt;&gt; {{.Error}}</p>
+            {{end}}
             {{if .Message}}
-            <p class="terminal-message">{{.Message}}</p>
+            <p class="terminal-message">&gt;&gt; {{.Message}}</p>
             {{end}}
             {{template "content" .}}
         </div>
