@@ -13,20 +13,20 @@ func Middleware(sessions *SessionStore, users *store.UserStore) func(http.Handle
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			userID := sessions.GetUserID(r)
 			if userID == "" {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				RedirectToLogin(w, r)
 				return
 			}
 
 			user, err := users.GetByID(userID)
 			if err != nil || user == nil {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				RedirectToLogin(w, r)
 				return
 			}
 
 			// Sliding session: refresh the cookie expiry on every request,
 			// so regular users never have to log in again.
 			if err := sessions.SetUserID(w, r, user.ID); err != nil {
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				RedirectToLogin(w, r)
 				return
 			}
 

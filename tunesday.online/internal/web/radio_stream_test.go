@@ -199,10 +199,12 @@ func TestStreamGateConcurrent(t *testing.T) {
 					max = running
 				}
 				mu.Unlock()
-				g.release("x")
+				// leave the measurement before the slot: otherwise another
+				// holder can start while this one is still counted
 				mu.Lock()
 				running--
 				mu.Unlock()
+				g.release("x")
 			}
 			done <- struct{}{}
 		}()

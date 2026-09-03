@@ -247,11 +247,13 @@ func (h *Handler) Verify(w http.ResponseWriter, r *http.Request) {
 	page("Verification", "Email verified! You can now log in.")
 }
 
-// LoginPage renders the login form.
+// LoginPage renders the login form, carrying any deep-link return target.
 func (h *Handler) LoginPage(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, "login.html", map[string]any{
-		"Title": "Login",
-	})
+	data := map[string]any{"Title": "Login"}
+	if next := auth.SafeNext(r.URL.Query().Get("next")); next != "" {
+		data["Next"] = next
+	}
+	h.render(w, r, "login.html", data)
 }
 
 // Login handles login form submission.
@@ -291,6 +293,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if next := auth.SafeNext(r.FormValue("next")); next != "" {
+		http.Redirect(w, r, next, http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/onboarding", http.StatusSeeOther)
 }
 

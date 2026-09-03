@@ -148,7 +148,12 @@
             });
         };
         if (window.YT && YT.Player) { go(); return; }
-        window.onYouTubeIframeAPIReady = go;
+        // Chain, never clobber: another script (quiz.js) may own the callback.
+        var prev = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = function () {
+            if (typeof prev === "function") { try { prev(); } catch (e) {} }
+            go();
+        };
         var s = document.createElement("script");
         s.src = "https://www.youtube.com/iframe_api";
         document.head.appendChild(s);
@@ -392,7 +397,9 @@
         ensureIframe();
         joinTimeout = setTimeout(function () {
             if (!joined) {
-                note("⚠ the YouTube player did not load (adblock?) — try ⚡ stream mode");
+                note("⚠ youtube.com is not loading — likely a tracker blocker (Brave Shields, " +
+                    "strict tracking protection), a company proxy/CA, or an untrusted certificate. " +
+                    "⚡ stream mode bypasses it.");
                 joinBtn.hidden = false;
             }
         }, 6000);

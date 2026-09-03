@@ -362,15 +362,20 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var pending []*store.Invitation
-	var providers []*store.ProviderView
+	providers, err := h.deps.Providers.ListByTeam(team.ID)
+	if err != nil {
+		redirectFlash(w, r, "/teams/"+team.Slug+"/members", "err", "Something went wrong")
+		return
+	}
+	unassigned := 0
+	for _, pv := range providers {
+		if pv.MemberUserID == "" {
+			unassigned++
+		}
+	}
 	if member.Role == "admin" {
 		var err error
 		pending, err = h.deps.Invitations.ListPendingByTeam(team.ID)
-		if err != nil {
-			redirectFlash(w, r, "/teams/"+team.Slug+"/members", "err", "Something went wrong")
-			return
-		}
-		providers, err = h.deps.Providers.ListByTeam(team.ID)
 		if err != nil {
 			redirectFlash(w, r, "/teams/"+team.Slug+"/members", "err", "Something went wrong")
 			return
@@ -380,6 +385,7 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 	data["Members"] = members
 	data["PendingInvites"] = pending
 	data["Providers"] = providers
+	data["UnassignedSeats"] = unassigned
 	h.render(w, r, "members.html", data)
 }
 

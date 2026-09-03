@@ -58,6 +58,7 @@
     /* ── YouTube player ── */
 
     function setupPlayer(cb) {
+        showEl(elPlayerW);
         ytPlayer = new YT.Player("player", {
             height: "180",
             width: "100%",
@@ -359,33 +360,79 @@
             "<span class='mono'>" + total + " playable tunes from " + ALL_PROVIDERS.length + " providers</span>" +
             "<button class='menu-btn' data-mode='quick' data-rounds='5'>[ Quick Game (5) ]</button>" +
             "<button class='menu-btn' data-mode='universe' data-rounds='42'>[ Life, Universe &amp; Everything (42) ]</button>" +
-            "<button class='menu-btn' data-mode='all'>[ All (" + total + " tunes) ]</button>";
-        Array.prototype.forEach.call(elMenu.querySelectorAll(".menu-btn"), function (btn) {
+            "<button class='menu-btn' data-mode='all'>[ All (" + total + " tunes) ]</button>" +
+            "<p id='menu-status' class='muted' hidden></p>";
+        var elMenuStatus = elMenu.querySelector("#menu-status");
+        var buttons = elMenu.querySelectorAll(".menu-btn");
+
+        function setBusy(busy) {
+            Array.prototype.forEach.call(buttons, function (b) { b.disabled = busy; });
+            elMenuStatus.hidden = false;
+            elMenuStatus.textContent = busy
+                ? "arming the player…"
+                : "the YouTube player did not load. an ad/tracker blocker, hardened browser " +
+                  "(Brave Shields, strict tracking protection) or a company proxy/CA setup is " +
+                  "blocking youtube.com. allow it for this site and click again.";
+        }
+
+        Array.prototype.forEach.call(buttons, function (btn) {
             btn.addEventListener("click", function () {
+                setBusy(true);
                 ensurePlayer(function () {
+                    setBusy(false);
+                    elMenuStatus.hidden = true;
                     engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0);
-                });
+                }, function () { setBusy(false); });
             });
         });
     }
 
-    var playerReady = false;
-    var readyQueue = [];
-    function ensurePlayer(cb) {
-        if (playerReady) return cb();
-        readyQueue.push(cb);
-        if (window.YT && YT.Player) return;
+    /* ── YouTube API loading: state machine, chained callbacks, watchdog ── */
+
+    var playerState = "idle"; // idle | loading | ready
+    var playerQueue = [];
+    var playerWatchdog = null;
+
+    // onApiReady installs a handler for the global YouTube callback without
+    // ever clobbering an existing one (coexists with radio.js on the same page).
+    function onApiReady(fn) {
+        if (window.YT && YT.Player) { fn(); return; }
+        var prev = window.onYouTubeIframeAPIReady;
+        window.onYouTubeIframeAPIReady = function () {
+            if (typeof prev === "function") { try { prev(); } catch (e) {} }
+            fn();
+        };
+    }
+
+    function ensurePlayer(cb, onFail) {
+        if (playerState === "ready") return cb();
+        playerQueue.push({ cb: cb, onFail: onFail });
+        if (playerState === "loading") return;
+
+        playerState = "loading";
+        if (playerWatchdog) clearTimeout(playerWatchdog);
+        playerWatchdog = setTimeout(function () {
+            if (playerState !== "loading") return;
+            playerState = "idle"; // next click retries from scratch
+            var q = playerQueue; playerQueue = [];
+            q.forEach(function (item) { if (item.onFail) item.onFail(); });
+        }, 8000);
+
+        var go = function () {
+            setupPlayer(function () {
+                playerState = "ready";
+                if (playerWatchdog) { clearTimeout(playerWatchdog); playerWatchdog = null; }
+                var q = playerQueue.slice();
+                playerQueue = [];
+                q.forEach(function (item) { item.cb(); });
+            });
+        };
+
+        if (window.YT && YT.Player) { go(); return; }
+        onApiReady(go);
         var s = document.createElement("script");
         s.src = "https://www.youtube.com/iframe_api";
         document.head.appendChild(s);
-        window.onYouTubeIframeAPIReady = function () {
-            setupPlayer(function () {
-                playerReady = true;
-                var q = readyQueue.slice();
-                readyQueue = [];
-                q.forEach(function (fn) { fn(); });
-            });
-        };
     }
 
     document.addEventListener("keydown", function (e) {

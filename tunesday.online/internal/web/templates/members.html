@@ -38,6 +38,11 @@
     </tbody>
 </table>
 
+{{if .UnassignedSeats}}
+<p class="muted">{{.UnassignedSeats}} seat{{if gt .UnassignedSeats 1}}s{{end}} in the
+roster still have no member → <a href="/teams/{{.Team.Slug}}/providers">roster</a></p>
+{{end}}
+
 {{if eq .Member.Role "admin"}}
 <h3>Invite a member</h3>
 <form method="POST" action="/teams/{{.Team.Slug}}/members">
