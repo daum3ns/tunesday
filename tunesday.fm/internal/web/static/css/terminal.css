@@ -431,3 +431,18 @@ a {
 @keyframes fall {
     to { transform: translateY(105vh) rotate(720deg); }
 }
+
+/* ---- Radio room ---- */
+
+#radio-now { margin-bottom: 0.75rem; }
+#radio-player { margin: 0.75rem 0; }
+#radio-player iframe { border: 1px solid #0f0; }
+
+.radio-controls {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-bottom: 1rem;
+}
+
+.playlist-row.current td { color: #fff; }

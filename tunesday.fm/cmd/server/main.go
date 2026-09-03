@@ -6,10 +6,11 @@ import (
 
 	"tunesday/internal/playlist"
 	"tunesday/tunesday.fm/internal/auth"
-	"tunesday/tunesday.fm/internal/ceremony"
 	"tunesday/tunesday.fm/internal/config"
 	"tunesday/tunesday.fm/internal/db"
 	"tunesday/tunesday.fm/internal/email"
+	"tunesday/tunesday.fm/internal/live"
+	"tunesday/tunesday.fm/internal/radio"
 	"tunesday/tunesday.fm/internal/store"
 	"tunesday/tunesday.fm/internal/web"
 )
@@ -38,7 +39,9 @@ func main() {
 		Invitations:   store.NewInvitationStore(database),
 		Tunes:         store.NewTuneStore(database),
 		Ceremonies:    store.NewCeremonyStore(database),
-		Rooms:         ceremony.NewManager(),
+		PlayStats:     store.NewPlayStatStore(database),
+		Rooms:         live.NewManager(),
+		Radio:         radio.NewManager(),
 		YT:            playlist.NewYouTube(),
 	}
 

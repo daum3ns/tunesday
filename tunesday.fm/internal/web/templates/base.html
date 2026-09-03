@@ -25,6 +25,7 @@
     <nav class="terminal-nav">
         <a href="/teams/{{.Team.Slug}}/dashboard" class="terminal-btn {{if eq .Tab "dashboard"}}active{{end}}">dashboard</a>
         <a href="/teams/{{.Team.Slug}}/members" class="terminal-btn {{if eq .Tab "members"}}active{{end}}">members</a>
+        <a href="/teams/{{.Team.Slug}}/radio" class="terminal-btn {{if eq .Tab "radio"}}active{{end}}">radio</a>
         <a href="/teams/{{.Team.Slug}}/providers" class="terminal-btn {{if eq .Tab "providers"}}active{{end}}">providers</a>
         {{if .CeremonyPath}}
         <a href="{{.CeremonyPath}}" class="terminal-btn {{if eq .Tab "ceremony"}}active{{end}}">ceremony</a>

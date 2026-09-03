@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -77,10 +78,10 @@ func (db *DB) runMigrations() error {
 
 		var applied bool
 		err := db.QueryRow("SELECT 1 FROM schema_migrations WHERE version = ?", version).Scan(&applied)
-		if err == nil {
+		if err == nil && applied {
 			continue
 		}
-		if err != sql.ErrNoRows {
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("check migration %s: %w", version, err)
 		}
 

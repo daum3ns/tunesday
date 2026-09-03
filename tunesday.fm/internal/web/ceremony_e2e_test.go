@@ -15,7 +15,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"tunesday/tunesday.fm/internal/ceremony"
+	"tunesday/tunesday.fm/internal/live"
 )
 
 type wsMsg struct {
@@ -317,7 +317,7 @@ func TestCeremonyEndToEnd(t *testing.T) {
 	res = admin.postForm(server, "/teams/ceremony-squad/ceremonies/"+token+"/tune", form)
 	res.Body.Close()
 
-	var adminComplete, drummerComplete ceremony.Message
+	var adminComplete, drummerComplete live.Message
 	if m := readUntil(t, drummerConn, "complete"); json.Unmarshal(m.Payload, &drummerComplete) != nil {
 		t.Fatal("bad complete payload for drummer")
 	}

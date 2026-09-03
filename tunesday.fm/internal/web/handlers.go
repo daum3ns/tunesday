@@ -12,10 +12,11 @@ import (
 
 	"tunesday/internal/playlist"
 	"tunesday/tunesday.fm/internal/auth"
-	"tunesday/tunesday.fm/internal/ceremony"
 	"tunesday/tunesday.fm/internal/config"
 	"tunesday/tunesday.fm/internal/db"
 	"tunesday/tunesday.fm/internal/email"
+	"tunesday/tunesday.fm/internal/live"
+	"tunesday/tunesday.fm/internal/radio"
 	"tunesday/tunesday.fm/internal/store"
 )
 
@@ -38,7 +39,9 @@ type Deps struct {
 	Invitations   *store.InvitationStore
 	Tunes         *store.TuneStore
 	Ceremonies    *store.CeremonyStore
-	Rooms         *ceremony.Manager
+	PlayStats     *store.PlayStatStore
+	Rooms         *live.Manager
+	Radio         *radio.Manager
 	YT            playlist.TitleProvider
 }
 
@@ -56,6 +59,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		"verify.html", "message.html", "onboarding.html", "team_new.html",
 		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
 		"ceremony.html", "import.html", "import_confirm.html", "login_link.html",
+		"radio.html",
 	}
 	tmpls := make(map[string]*template.Template)
 	for _, page := range pages {

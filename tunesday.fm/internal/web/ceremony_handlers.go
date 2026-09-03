@@ -14,7 +14,7 @@ import (
 
 	"tunesday/internal/playlist"
 	"tunesday/tunesday.fm/internal/auth"
-	"tunesday/tunesday.fm/internal/ceremony"
+	"tunesday/tunesday.fm/internal/live"
 	"tunesday/tunesday.fm/internal/store"
 )
 
@@ -81,7 +81,7 @@ func (h *Handler) StartCeremony(w http.ResponseWriter, r *http.Request) {
 		Pool: names,
 	}
 	if err := h.deps.Ceremonies.Create(cer); err != nil {
-		redirectFlash(w, r, back, "err", "Could not start the ceremony.")
+		redirectFlash(w, r, back, "err", "Could not start the live.")
 		return
 	}
 
@@ -186,7 +186,7 @@ func (h *Handler) ensureAlias(cer *store.Ceremony, userID string) string {
 			return a.Alias
 		}
 	}
-	alias := ceremony.NewAlias(used)
+	alias := live.NewAlias(used)
 	if err := h.deps.Ceremonies.AddAttendee(cer.ID, userID, alias); err != nil {
 		alias = "Mystery Listener"
 	}
@@ -329,9 +329,9 @@ func (h *Handler) revealPool(cer *store.Ceremony, live []string) (pool, connecte
 }
 
 // sendState delivers the full snapshot to one freshly joined client.
-func (h *Handler) sendState(client *ceremony.Client, cer *store.Ceremony, viewerID string) {
+func (h *Handler) sendState(client *live.Client, cer *store.Ceremony, viewerID string) {
 	st := h.ceremonyState(cer, viewerID)
-	_ = client.SendJSON(ceremony.Message{Type: "state", Payload: st})
+	_ = client.SendJSON(live.Message{Type: "state", Payload: st})
 }
 
 // CeremonyReveal draws a uniform random winner from the providers present in

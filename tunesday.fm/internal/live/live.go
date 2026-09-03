@@ -1,6 +1,7 @@
-// Package ceremony implements the live provider-selection room: a small
-// WebSocket hub that keeps every connected browser in sync during the reveal.
-package ceremony
+// Package live provides the small WebSocket hub shared by the ceremony room
+// and the radio room: identity-tracked clients, per-client write locking,
+// broadcast with dead-client eviction, and ephemeral listener aliases.
+package live
 
 import (
 	"log"
@@ -8,8 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
+
+// Token generates an opaque random identifier for rooms and sessions.
+func Token() string { return uuid.NewString() }
 
 // Message is one frame sent to clients.
 type Message struct {
@@ -93,6 +98,16 @@ func (r *Room) Count() int {
 
 // Broadcast sends msg to every connected client, dropping dead ones.
 func (r *Room) Broadcast(msgType string, payload any) {
+	r.broadcast(msgType, payload, nil)
+}
+
+// BroadcastExcept is Broadcast for everyone but one client — used to notify
+// the room about a join that the newcomer already received privately.
+func (r *Room) BroadcastExcept(skip *Client, msgType string, payload any) {
+	r.broadcast(msgType, payload, skip)
+}
+
+func (r *Room) broadcast(msgType string, payload any, skip *Client) {
 	msg := Message{Type: msgType, Payload: payload}
 
 	r.mu.Lock()
@@ -104,6 +119,9 @@ func (r *Room) Broadcast(msgType string, payload any) {
 
 	var dead []*Client
 	for _, c := range clients {
+		if c == skip {
+			continue
+		}
 		if err := c.SendJSON(msg); err != nil {
 			dead = append(dead, c)
 		}
@@ -116,7 +134,7 @@ func (r *Room) Broadcast(msgType string, payload any) {
 		if _, ok := r.clients[c]; ok {
 			delete(r.clients, c)
 			r.mu.Unlock()
-			log.Printf("ceremony %s: dropping dead client", r.token)
+			log.Printf("live room %s: dropping dead client", r.token)
 			c.CloseConnection()
 			r.mu.Lock()
 		}
