@@ -3,9 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
-	"time"
 
-	"tunesday/internal/playlist"
 	"tunesday/tunesday.online/internal/auth"
 	"tunesday/tunesday.online/internal/config"
 	"tunesday/tunesday.online/internal/db"
@@ -29,6 +27,15 @@ func main() {
 	}
 	defer database.Close()
 
+	// One yt-dlp extractor serves both the stream resolver and title
+	// fetching — the proven path the CLI's mpv radio uses.
+	extractor := stream.NewYTDLP()
+	if err := extractor.Available(); err != nil {
+		log.Printf("tunesday.online: WARNING yt-dlp not available (%v); "+
+			"radio stream mode will fall back to the iframe player and title "+
+			"lookup will fail. Install yt-dlp or set TUNESDAY_ONLINE_YTDLP_PATH.", err)
+	}
+
 	deps := web.Deps{
 		DB:            database,
 		Users:         store.NewUserStore(database),
@@ -45,8 +52,8 @@ func main() {
 		Quiz:          store.NewQuizStore(database),
 		Rooms:         live.NewManager(),
 		Radio:         radio.NewManager(),
-		Streams:       stream.NewCached(stream.NewYouTube(), 5*time.Hour, 256),
-		YT:            playlist.NewYouTube(),
+		Streams:       stream.NewCached(extractor, 0, 0),
+		YT:            extractor,
 	}
 
 	wh, err := web.NewHandler(cfg, deps)

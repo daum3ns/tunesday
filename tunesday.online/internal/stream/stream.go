@@ -1,90 +1,39 @@
 // Package stream resolves YouTube video IDs to playable audio-only stream
-// URLs for the radio room's direct-stream mode. Signed upstream URLs expire
-// after roughly six hours, so results are cached with a conservative TTL
-// and identical lookups are deduplicated while in flight.
+// URLs for the radio room's direct-stream mode. Extraction is delegated to
+// yt-dlp (see ytdlp.go) — the same proven path the CLI's mpv radio uses.
+// Signed upstream URLs expire, so results are cached and identical lookups
+// are deduplicated while in flight.
 package stream
 
 import (
 	"context"
 	"errors"
-	"fmt"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/kkdai/youtube/v2"
 	"golang.org/x/sync/singleflight"
 )
 
-// ErrNoAudio is returned when a video exposes no audio-only format.
-var ErrNoAudio = errors.New("no audio-only stream available")
-
-// Info is one playable audio stream.
-type Info struct {
-	URL      string
-	MimeType string
-}
-
-// Resolver turns a YouTube video ID into an audio stream. Production code
-// uses Cached(youtube-backed); tests substitute fakes at this seam.
+// Resolver turns a YouTube video ID into an audio stream. Production uses
+// Cached(YTDLP); tests substitute fakes at this seam.
 type Resolver interface {
 	Resolve(ctx context.Context, videoID string) (Info, error)
 }
 
-// YouTube resolves streams through the kkdai client (shared with the
-// playlist package's tooling).
-type YouTube struct{ c *youtube.Client }
-
-// NewYouTube builds a live resolver.
-func NewYouTube() *YouTube { return &YouTube{c: &youtube.Client{}} }
-
-// Resolve fetches video metadata, prefers itag 140 (AAC — broadest browser
-// support), then 251 (opus), then any audio-only format.
-func (y *YouTube) Resolve(ctx context.Context, videoID string) (Info, error) {
-	video, err := y.c.GetVideoContext(ctx, "https://www.youtube.com/watch?v="+videoID)
-	if err != nil {
-		return Info{}, fmt.Errorf("fetch video: %w", err)
-	}
-	format, err := pickAudio(video.Formats)
-	if err != nil {
-		return Info{}, err
-	}
-	u, err := y.c.GetStreamURLContext(ctx, video, &format)
-	if err != nil {
-		return Info{}, fmt.Errorf("stream url: %w", err)
-	}
-	return Info{URL: u, MimeType: mimeTypeFor(format)}, nil
+// Info is one playable audio stream.
+type Info struct {
+	URL       string
+	MimeType  string
+	ExpiresAt time.Time // zero means "unknown, trust the cache TTL"
 }
 
-func pickAudio(formats []youtube.Format) (youtube.Format, error) {
-	for _, want := range []int{140, 251} {
-		for _, f := range formats {
-			if f.ItagNo == want {
-				return f, nil
-			}
-		}
-	}
-	for _, f := range formats {
-		if strings.HasPrefix(strings.ToLower(f.MimeType), "audio") {
-			return f, nil
-		}
-	}
-	return youtube.Format{}, ErrNoAudio
-}
-
-// mimeTypeFor extracts the container (e.g. "audio/mp4") from a
-// "audio/mp4; codecs=\"...\"" mime string.
-func mimeTypeFor(f youtube.Format) string {
-	if base := strings.ToLower(strings.Split(f.MimeType, ";")[0]); strings.HasPrefix(base, "audio") {
-		return base
-	}
-	switch f.ItagNo {
-	case 251:
-		return "audio/webm"
-	default:
-		return "audio/mp4"
-	}
+// Valid reports whether the info is still usable at time now.
+func (i Info) Valid(now time.Time) bool {
+	return i.URL != "" && (i.ExpiresAt.IsZero() || now.Before(i.ExpiresAt))
 }
 
 // Cached decorates a Resolver with a TTL cache and in-flight dedupe.
@@ -104,10 +53,10 @@ type entry struct {
 	fetchedAt time.Time
 }
 
-// NewCached wraps inner. ttl <= 0 uses 5 hours; maxEntries <= 0 uses 256.
+// NewCached wraps inner. ttl <= 0 uses 3 hours; maxEntries <= 0 uses 256.
 func NewCached(inner Resolver, ttl time.Duration, maxEntries int) *Cached {
 	if ttl <= 0 {
-		ttl = 5 * time.Hour
+		ttl = 3 * time.Hour
 	}
 	if maxEntries <= 0 {
 		maxEntries = 256
@@ -129,7 +78,7 @@ func (c *Cached) Resolve(ctx context.Context, videoID string) (Info, error) {
 	}
 
 	c.mu.Lock()
-	if e, ok := c.entries[videoID]; ok && c.now().Sub(e.fetchedAt) < c.ttl {
+	if e, ok := c.entries[videoID]; ok && c.fresh(e) {
 		c.mu.Unlock()
 		return e.info, nil
 	}
@@ -155,6 +104,13 @@ func (c *Cached) Resolve(ctx context.Context, videoID string) (Info, error) {
 		}
 		return res.Val.(Info), nil
 	}
+}
+
+func (c *Cached) fresh(e entry) bool {
+	if !e.info.Valid(c.now()) {
+		return false
+	}
+	return c.now().Sub(e.fetchedAt) < c.ttl
 }
 
 func (c *Cached) store(videoID string, info Info) {
@@ -184,4 +140,35 @@ func (c *Cached) Invalidate(videoID string) {
 	c.mu.Lock()
 	delete(c.entries, videoID)
 	c.mu.Unlock()
+}
+
+// mimeFromURL extracts a media type hint from a googlevideo-style URL
+// (`&mime=audio%2Fmp4`), defaulting to audio/mp4.
+func mimeFromURL(raw string) string {
+	if i := strings.Index(raw, "?"); i >= 0 {
+		for _, part := range strings.Split(raw[i+1:], "&") {
+			k, v, found := strings.Cut(part, "=")
+			if found && k == "mime" {
+				if mt, err := url.QueryUnescape(v); err == nil && mt != "" {
+					return mt
+				}
+			}
+		}
+	}
+	return "audio/mp4"
+}
+
+// expireFromURL extracts the signed expiry (`&expire=1712345678`), if any.
+func expireFromURL(raw string) time.Time {
+	if i := strings.Index(raw, "?"); i >= 0 {
+		for _, part := range strings.Split(raw[i+1:], "&") {
+			k, v, found := strings.Cut(part, "=")
+			if found && k == "expire" {
+				if unix, err := strconv.ParseInt(v, 10, 64); err == nil && unix > 0 {
+					return time.Unix(unix, 0)
+				}
+			}
+		}
+	}
+	return time.Time{}
 }

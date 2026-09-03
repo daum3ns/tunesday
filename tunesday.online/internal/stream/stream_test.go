@@ -7,8 +7,6 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/kkdai/youtube/v2"
 )
 
 type stubResolver struct {
@@ -130,43 +128,5 @@ func TestInvalidate(t *testing.T) {
 	c.Resolve(context.Background(), "v") //nolint
 	if n := inner.calls.Load(); n != 2 {
 		t.Fatalf("invalidate must force refetch, got %d", n)
-	}
-}
-
-func TestPickAudioPreferences(t *testing.T) {
-	if _, err := pickAudio(nil); !errors.Is(err, ErrNoAudio) {
-		t.Fatalf("empty formats must return ErrNoAudio, got %v", err)
-	}
-
-	fmts := []youtube.Format{
-		{ItagNo: 251, MimeType: `audio/webm; codecs="opus"`},
-		{ItagNo: 140, MimeType: `audio/mp4; codecs="mp4a.40.2"`},
-		{ItagNo: 18, MimeType: `audio/mp4; codecs="mp4a.40.2"`},
-	}
-	f, err := pickAudio(fmts)
-	if err != nil || f.ItagNo != 140 {
-		t.Fatalf("itag 140 must win, got %+v (%v)", f, err)
-	}
-
-	f, err = pickAudio(fmts[:1])
-	if err != nil || f.ItagNo != 251 {
-		t.Fatalf("251 fallback expected, got %+v (%v)", f, err)
-	}
-
-	f, err = pickAudio([]youtube.Format{{ItagNo: 171, MimeType: `audio/webm; codecs="vorbis"`}})
-	if err != nil || f.ItagNo != 171 {
-		t.Fatalf("any audio mime must work as last resort, got %+v (%v)", f, err)
-	}
-
-	_, err = pickAudio([]youtube.Format{{ItagNo: 134, MimeType: `video/mp4; codecs="avc1"`}})
-	if !errors.Is(err, ErrNoAudio) {
-		t.Fatalf("video-only formats must not pick, got %v", err)
-	}
-
-	if mt := mimeTypeFor(youtube.Format{ItagNo: 140, MimeType: `audio/mp4; codecs="mp4a.40.2"`}); mt != "audio/mp4" {
-		t.Fatalf("mimeTypeFor should strip codecs, got %q", mt)
-	}
-	if mt := mimeTypeFor(youtube.Format{ItagNo: 251}); mt != "audio/webm" {
-		t.Fatalf("mimeTypeFor fallback should be webm for 251, got %q", mt)
 	}
 }

@@ -571,13 +571,18 @@ tunesday.online {
 
 - ✅ Radio mode (synced listening room, play stats)
 - ✅ Quiz ("Guess the Provider" server-integrated, leaderboards)
-- ✅ **Audio proxy / stream mode:** `GET /teams/{slug}/radio/stream?tune_id=N` resolves
-  audio-only YouTube formats (itag 140 → 251) via kkdai, caches signed URLs (5 h TTL,
-  singleflight), proxies with Range passthrough, member-gated, team-scoped tune ids
-  (never an open proxy), per-team concurrency cap of 4. Client-side per-user
+- ✅ **Audio proxy / stream mode:** `GET /teams/{slug}/radio/stream?tune_id=N` extracts
+  audio via **yt-dlp** (the same engine the CLI's mpv radio uses — deliberately not the
+  kkdai Go library, which YouTube's bot wall breaks), caches signed URLs (honours their
+  real `expire=`, singleflight dedupe), proxies with Range passthrough, member-gated,
+  team-scoped tune ids (never an open proxy), per-team concurrency cap of 4. yt-dlp also
+  serves web title lookups (`yt-dlp --print title`). Client-side per-user
   `⚡ stream` toggle with instant auto-fallback to the YouTube IFrame player. The
   Web Audio equalizer canvas lights up only in stream mode (same-origin audio).
-  Caveat: datacenter IPs may hit YouTube bot-detection; the fallback keeps radio
+  Runtime dependency: `yt-dlp` (in the container image, or on PATH; override with
+  `TUNESDAY_ONLINE_YTDLP_PATH`). Keep it fresh against YouTube changes:
+  `docker compose exec tunesday python3 -m pip install -U yt-dlp`.
+  Caveat: datacenter IPs may still hit YouTube bot-detection; the fallback keeps radio
   usable if that happens on the VPS.
 - ✅ JSON export + replace-import with warning page
 - ✅ Optional passwords (magic link stays the recovery path; no reset flow)
