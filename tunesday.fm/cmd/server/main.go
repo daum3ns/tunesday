@@ -40,6 +40,7 @@ func main() {
 		Tunes:         store.NewTuneStore(database),
 		Ceremonies:    store.NewCeremonyStore(database),
 		PlayStats:     store.NewPlayStatStore(database),
+		Quiz:          store.NewQuizStore(database),
 		Rooms:         live.NewManager(),
 		Radio:         radio.NewManager(),
 		YT:            playlist.NewYouTube(),

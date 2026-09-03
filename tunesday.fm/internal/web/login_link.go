@@ -89,6 +89,12 @@ func newIPThrottle(minGap time.Duration) *ipThrottle {
 	return &ipThrottle{last: map[string]time.Time{}, minGap: minGap}
 }
 
+func (t *ipThrottle) reset() {
+	t.mu.Lock()
+	t.last = map[string]time.Time{}
+	t.mu.Unlock()
+}
+
 func (t *ipThrottle) allow(ip string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -112,9 +118,7 @@ var loginLinkThrottle = newIPThrottle(15 * time.Second)
 // resetLoginLinkThrottle clears the per-IP throttle. Used by tests, which all
 // share one loopback IP and run faster than the throttle window.
 func resetLoginLinkThrottle() {
-	loginLinkThrottle.mu.Lock()
-	loginLinkThrottle.last = map[string]time.Time{}
-	loginLinkThrottle.mu.Unlock()
+	loginLinkThrottle.reset()
 }
 
 func clientIP(r *http.Request) string {

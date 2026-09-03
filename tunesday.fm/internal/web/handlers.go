@@ -40,6 +40,7 @@ type Deps struct {
 	Tunes         *store.TuneStore
 	Ceremonies    *store.CeremonyStore
 	PlayStats     *store.PlayStatStore
+	Quiz          *store.QuizStore
 	Rooms         *live.Manager
 	Radio         *radio.Manager
 	YT            playlist.TitleProvider
@@ -59,7 +60,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		"verify.html", "message.html", "onboarding.html", "team_new.html",
 		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
 		"ceremony.html", "import.html", "import_confirm.html", "login_link.html",
-		"radio.html",
+		"radio.html", "quiz.html",
 	}
 	tmpls := make(map[string]*template.Template)
 	for _, page := range pages {

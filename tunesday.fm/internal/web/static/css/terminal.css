@@ -446,3 +446,75 @@ a {
 }
 
 .playlist-row.current td { color: #fff; }
+
+/* ---- Guess the Provider quiz ---- */
+
+#quiz-menu .title { font-size: 1.1em; margin: 0.75rem 0 0.5rem; display: block; }
+#quiz-menu .title:first-child { margin-top: 0; }
+
+.menu-btn {
+    display: block;
+    width: 100%;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 0.6rem 1rem;
+    margin: 0.4rem 0;
+    font-family: inherit;
+    font-size: 1em;
+    cursor: pointer;
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+.menu-btn:hover { background: #0f0; color: #000; }
+
+#quiz-status { margin-bottom: 0.5rem; }
+#countdown-label { margin-right: 0.5rem; }
+#countdown-bar { color: #0f0; }
+#quiz-prompt { margin: 0.5rem 0; }
+
+.answer-btn {
+    display: block;
+    width: 100%;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 0.5rem 1rem;
+    margin: 0.3rem 0;
+    font-family: inherit;
+    font-size: 1em;
+    cursor: pointer;
+    text-align: left;
+}
+
+.answer-btn:hover:not(:disabled) { background: #0f0; color: #000; }
+.answer-btn:disabled { cursor: not-allowed; }
+.answer-btn.correct-highlight { background: #0f0; color: #000; border-color: #0f0; }
+.answer-btn.wrong-highlight { background: #f00; color: #000; border-color: #f00; }
+
+#quiz-feedback { margin-top: 0.5rem; }
+#quiz-feedback.correct { color: #0f0; }
+#quiz-feedback.wrong { color: #f00; }
+
+#quiz-end { text-align: center; margin-top: 0.5rem; }
+#quiz-end pre { margin-bottom: 0.75rem; }
+
+.end-btn {
+    display: inline-block;
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    padding: 0.5rem 1.5rem;
+    margin-top: 0.5rem;
+    font-family: inherit;
+    font-size: 1em;
+    cursor: pointer;
+}
+
+.end-btn:hover { background: #0f0; color: #000; }
+
+#player-wrapper { margin-top: 1rem; }
+#player-wrapper iframe { border: 1px solid #0f0; }
+
+#quiz-error { color: #f00; white-space: pre-wrap; }
