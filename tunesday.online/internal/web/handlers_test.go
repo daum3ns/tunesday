@@ -2,10 +2,12 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 
 	"tunesday/tunesday.online/internal/auth"
@@ -15,6 +17,7 @@ import (
 	"tunesday/tunesday.online/internal/live"
 	"tunesday/tunesday.online/internal/radio"
 	"tunesday/tunesday.online/internal/store"
+	"tunesday/tunesday.online/internal/stream"
 )
 
 // fakeYouTube is a deterministic playlist.TitleProvider for tests.
@@ -76,6 +79,7 @@ func setupTestHandler(t *testing.T) (*Handler, *db.DB, *email.Service) {
 		Quiz:          store.NewQuizStore(database),
 		Rooms:         live.NewManager(),
 		Radio:         radio.NewManager(),
+		Streams:       &fakeStreamResolver{err: errors.New("no upstream configured")},
 		YT:            fakeYouTube{},
 	}
 
@@ -257,4 +261,35 @@ func TestAuthMiddleware(t *testing.T) {
 	if rr.Code != http.StatusSeeOther {
 		t.Fatalf("expected redirect for unauthenticated user, got %d", rr.Code)
 	}
+}
+
+// fakeStreamResolver is the test stand-in for the YouTube stream resolver.
+type fakeStreamResolver struct {
+	mu      sync.Mutex
+	calls   int
+	invalat int
+	url     string
+	err     error
+}
+
+func (f *fakeStreamResolver) Resolve(_ context.Context, _ string) (stream.Info, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.err != nil {
+		return stream.Info{}, f.err
+	}
+	return stream.Info{URL: f.url, MimeType: "audio/mp4"}, nil
+}
+
+func (f *fakeStreamResolver) Invalidate(string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.invalat++
+}
+
+func (f *fakeStreamResolver) stats() (calls, invalidates int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls, f.invalat
 }

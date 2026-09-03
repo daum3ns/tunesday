@@ -18,6 +18,7 @@ import (
 	"tunesday/tunesday.online/internal/live"
 	"tunesday/tunesday.online/internal/radio"
 	"tunesday/tunesday.online/internal/store"
+	"tunesday/tunesday.online/internal/stream"
 )
 
 //go:embed templates/*.html
@@ -43,14 +44,16 @@ type Deps struct {
 	Quiz          *store.QuizStore
 	Rooms         *live.Manager
 	Radio         *radio.Manager
+	Streams       stream.Resolver
 	YT            playlist.TitleProvider
 }
 
 // Handler holds the web handlers and templates.
 type Handler struct {
-	tmpls map[string]*template.Template
-	cfg   *config.Config
-	deps  Deps
+	tmpls      map[string]*template.Template
+	cfg        *config.Config
+	deps       Deps
+	streamGate *concurrencyGate
 }
 
 // NewHandler creates a new web handler, parsing embedded templates.
@@ -70,7 +73,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		}
 		tmpls[page] = tmpl
 	}
-	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps}, nil
+	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps, streamGate: newConcurrencyGate(4)}, nil
 }
 
 // StaticFiles returns an http.Handler for embedded static assets.

@@ -5,6 +5,9 @@
     <p id="radio-status">connecting to the broadcast…</p>
     <p id="radio-track" class="muted">nothing queued up yet</p>
     <div id="radio-player"></div>
+    <audio id="radio-audio" hidden></audio>
+    <canvas id="radio-eq" width="640" height="72" hidden></canvas>
+    <p id="radio-stream-note" class="muted" hidden></p>
     <p>
         <button id="join-btn" class="terminal-btn big" hidden>▶ JOIN THE PARTY (unmutes your side)</button>
     </p>
@@ -17,6 +20,7 @@
     <button id="btn-prev"  class="terminal-btn" disabled>⏮ prev</button>
     <button id="btn-next"  class="terminal-btn" disabled>⏭ next</button>
     <button id="btn-shuffle" class="terminal-btn">⇄ mode: ordered</button>
+    <button id="btn-stream" class="terminal-btn" title="Route audio through tunesday.online instead of YouTube's player">⚡ stream: off</button>
 </div>
 
 <h3>Who's listening</h3>

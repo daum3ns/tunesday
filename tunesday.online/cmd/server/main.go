@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"tunesday/internal/playlist"
 	"tunesday/tunesday.online/internal/auth"
@@ -12,6 +13,7 @@ import (
 	"tunesday/tunesday.online/internal/live"
 	"tunesday/tunesday.online/internal/radio"
 	"tunesday/tunesday.online/internal/store"
+	"tunesday/tunesday.online/internal/stream"
 	"tunesday/tunesday.online/internal/web"
 )
 
@@ -43,6 +45,7 @@ func main() {
 		Quiz:          store.NewQuizStore(database),
 		Rooms:         live.NewManager(),
 		Radio:         radio.NewManager(),
+		Streams:       stream.NewCached(stream.NewYouTube(), 5*time.Hour, 256),
 		YT:            playlist.NewYouTube(),
 	}
 

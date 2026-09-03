@@ -18,15 +18,59 @@
     var btnPrev = document.getElementById("btn-prev");
     var btnNext = document.getElementById("btn-next");
     var btnShuffle = document.getElementById("btn-shuffle");
+    var btnStream = document.getElementById("btn-stream");
+
+    var audioEl = document.getElementById("radio-audio");
+    var noteEl = document.getElementById("radio-stream-note");
+    var eqCanvas = document.getElementById("radio-eq");
 
     var ws = null;
-    var player = null;          // YT.Player
-    var joined = false;         // user gesture happened, player exists
-    var state = null;           // last radio_state payload
-    var arrivedAt = 0;          // Date.now() when state arrived
-    var currentTuneId = 0;      // tune the player has cued
-    var endedSentFor = 0;       // tune we already reported finished
-    var pendingPlay = false;
+    var state = null;
+    var arrivedAt = 0;
+
+    var player = null;          // YT.Player (fallback player)
+    var joined = false;         // user gesture happened
+    var currentTuneId = 0;      // tune cued in the iframe
+    var endedSentFor = 0;
+
+    var streamOn = (function () {
+        try { return localStorage.getItem("tunesday-stream") === "1"; } catch (e) { return false; }
+    })();
+    var audioActive = false;
+    var audioTuneId = 0;
+    var watchdog = null;
+
+    /* ── media abstraction: audio element takes over in stream mode ── */
+
+    function mediaTime() {
+        if (audioActive && audioEl) { try { return audioEl.currentTime || 0; } catch (e) { return 0; } }
+        if (joined && player && player.getCurrentTime) { try { return player.getCurrentTime() || 0; } catch (e) { return 0; } }
+        return 0;
+    }
+
+    function mediaDuration() {
+        var d = 0;
+        if (audioActive && audioEl) d = audioEl.duration;
+        else if (joined && player && player.getDuration) d = player.getDuration();
+        if (!d || !isFinite(d)) return 0;
+        return d;
+    }
+
+    function mediaSeek(pos) {
+        if (audioActive && audioEl) { audioEl.currentTime = pos; return; }
+        if (player && player.seekTo) player.seekTo(pos, true);
+    }
+
+    function mediaPause() {
+        if (audioActive && audioEl) { audioEl.pause(); return; }
+        pauseIframe();
+    }
+
+    function pauseIframe() {
+        if (player && typeof player.pauseVideo === "function") player.pauseVideo();
+    }
+
+    /* ── transport ── */
 
     function connect() {
         var proto = location.protocol === "https:" ? "wss://" : "ws://";
@@ -44,14 +88,12 @@
     function position() {
         if (!state || !state.tune) return 0;
         if (state.status === "paused") return state.elapsedSec || 0;
-        var drift = (Date.now() - arrivedAt) / 1000;
-        return (state.elapsedSec || 0) + drift;
+        return (state.elapsedSec || 0) + (Date.now() - arrivedAt) / 1000;
     }
 
     function applyState(p) {
         state = p;
         arrivedAt = Date.now();
-
         renderListeners(p.listeners || []);
         renderControls();
 
@@ -59,11 +101,15 @@
             statusEl.textContent = "the decks are cold — press play to start the party";
             trackEl.textContent = "nothing playing";
             posEl.textContent = "";
+            releaseAudio();
             if (player) player.stopVideo();
+            currentTuneId = 0;
             return;
         }
 
-        statusEl.textContent = p.status === "paused" ? "PAUSED — someone stepped away from the mixer" : "▶ live";
+        statusEl.textContent = p.status === "paused"
+            ? "PAUSED — someone stepped away from the mixer"
+            : "▶ live";
         trackEl.textContent = "♪ " + p.tune.title + "  [ " + p.tune.provider + " ]";
 
         if (!joined) {
@@ -71,93 +117,231 @@
             return;
         }
 
-        cueAndSync();
+        if (streamOn && audioEl) syncAudio();
+        if (!audioActive) cueAndSync();
+    }
+
+    /* ── iframe player (fallback + default) ── */
+
+    function loadYouTubeAPI() {
+        if (window.YT && YT.Player) return true;
+        var s = document.createElement("script");
+        s.src = "https://www.youtube.com/iframe_api";
+        document.head.appendChild(s);
+        return false;
+    }
+
+    function createIframe() {
+        new YT.Player("radio-player", {
+            width: "100%",
+            height: "240",
+            playerVars: { playsinline: 1, rel: 0 },
+            events: {
+                onReady: function () {
+                    playerReady();
+                },
+                onStateChange: function () { /* sync is position()-driven */ }
+            }
+        });
+    }
+
+    function playerReady() {
+        joined = true;
+        joinBtn.hidden = true;
+        if (state) applyState(state);
     }
 
     function cueAndSync() {
-        if (!player || !player.cueVideoById) return;
+        if (!player || !player.cueVideoById || !state || !state.tune) return;
         var t = state.tune;
         if (currentTuneId !== t.id) {
             currentTuneId = t.id;
-            endedSentFor = 0;
             player.cueVideoById(t.youtubeId);
         }
         if (state.status === "playing") {
-            player.seekTo(position(), true);
-            if (pendingPlay) return; // wait for READY below
-            var st = player.getPlayerState && player.getPlayerState();
-            if (st === -1) { pendingPlay = true; }
-            else player.playVideo();
+            player.playVideo();
+            var drift = Math.abs((player.getCurrentTime() || 0) - position());
+            if (drift > 1.5) player.seekTo(position(), true);
         } else if (state.status === "paused") {
-            player.seekTo(position(), true);
             player.pauseVideo();
         }
     }
 
-    function onReady() {
-        joined = true;
-        joinBtn.hidden = true;
-        pendingPlay = false;
-        if (state && state.status === "playing" && state.tune) {
-            currentTuneId = 0; // force cue
-            cueAndSync();
-            if (player) player.playVideo();
+    /* ── direct stream (audio element) ── */
+
+    function note(msg) {
+        if (!noteEl) return;
+        if (!msg) { noteEl.hidden = true; noteEl.textContent = ""; return; }
+        noteEl.hidden = false;
+        noteEl.textContent = msg;
+    }
+
+    function updateStreamBtn() {
+        if (!btnStream) return;
+        btnStream.textContent = "⚡ stream: " + (streamOn ? "on" : "off");
+        btnStream.classList.toggle("active", streamOn);
+    }
+
+    function syncAudio() {
+        var t = state.tune;
+        if (audioTuneId !== t.id) {
+            releaseAudio();
+            audioTuneId = t.id;
+            audioEl.src = basePath + "/stream?tune_id=" + t.id;
+            try { audioEl.load(); } catch (e) { return streamFail("browser blocked the stream"); }
+            armWatchdog();
+        }
+        if (state.status === "playing") {
+            tryPlayAudio();
+            pauseIframe();
+        } else if (state.status === "paused") {
+            if (audioActive) {
+                audioEl.pause();
+                try { audioEl.currentTime = position(); } catch (e) {}
+            }
         }
     }
 
-    function loadYouTubeAPI(cb) {
-        if (window.YT && YT.Player) return cb();
-        window.onYouTubeIframeAPIReady = function () { cb(); };
-        var s = document.createElement("script");
-        s.src = "https://www.youtube.com/iframe_api";
-        document.head.appendChild(s);
+    function tryPlayAudio() {
+        if (!audioActive) return; // becomes live on 'canplay'
+        var p = position();
+        try { audioEl.currentTime = p; } catch (e) {}
+        audioEl.play().catch(function () {
+            setTimeout(function () {
+                if (audioActive && state && state.status === "playing") {
+                    audioEl.play().catch(function () { armWatchdog(); });
+                }
+            }, 400);
+        });
     }
 
-    joinBtn.addEventListener("click", function () {
-        loadYouTubeAPI(function () {
-            player = new YT.Player("radio-player", {
-                width: "100%",
-                height: "315",
-                playerVars: { playsinline: 1, rel: 0 },
-                events: {
-                    onReady: onReady,
-                    onStateChange: function (ev) {
-                        if (ev.data === YT.PlayerState.PLAYING && pendingPlay) {
-                            pendingPlay = false;
-                            player.seekTo(position(), true);
-                        }
-                    }
-                }
-            });
-        });
-    });
+    function armWatchdog() {
+        if (watchdog) clearTimeout(watchdog);
+        watchdog = setTimeout(function () {
+            if (!audioActive && streamOn) streamFail("the stream stayed silent");
+        }, 5000);
+    }
 
-    function renderListeners(list) {
-        listenersEl.innerHTML = "";
-        if (!list.length) {
-            listenersEl.innerHTML = '<li class="muted">nobody connected</li>';
+    function streamFail(reason) {
+        if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+        if (!audioActive && audioTuneId === 0) return;
+        releaseAudio();
+        note("⚠ direct stream hiccuped (" + reason + ") — back to the YouTube player");
+        if (state) { // re-route to iframe
+            cueAndSync();
+        }
+    }
+
+    function releaseAudio() {
+        if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+        var was = audioActive;
+        audioActive = false;
+        audioTuneId = 0;
+        if (audioEl) {
+            try { audioEl.pause(); } catch (e) {}
+            audioEl.removeAttribute("src");
+            try { audioEl.load(); } catch (e2) {}
+        }
+        if (was) stopEq();
+    }
+
+    if (audioEl) {
+        audioEl.addEventListener("canplay", function () {
+            if (!streamOn) return;
+            if (audioTuneId === 0 || !state || !state.tune || audioTuneId !== state.tune.id) return;
+            audioActive = true;
+            if (watchdog) { clearTimeout(watchdog); watchdog = null; }
+            note("");
+            pauseIframe();
+            tryPlayAudio();
+            startEq();
+        });
+        audioEl.addEventListener("error", function () {
+            if (audioTuneId !== 0) streamFail("the server could not deliver the audio");
+        });
+        audioEl.addEventListener("stalled", function () { armWatchdog(); });
+    }
+
+    if (btnStream) btnStream.addEventListener("click", function () {
+        streamOn = !streamOn;
+        try { localStorage.setItem("tunesday-stream", streamOn ? "1" : "0"); } catch (e) {}
+        updateStreamBtn();
+        if (!streamOn) {
+            releaseAudio();
+            note("");
+            if (state) applyState(state);
             return;
         }
-        list.forEach(function (l) {
-            var li = document.createElement("li");
-            li.textContent = "⏻ " + l.alias + (l.provider ? "  [ " + l.provider + " ]" : "") + (l.isYou ? "  ← you" : "");
-            listenersEl.appendChild(li);
-        });
-    }
+        ensureAudioGraph();
+        note("trying the direct stream…");
+        if (state) applyState(state);
+    });
 
-    function renderControls() {
-        var hasTunes = state && state.queueLen > 0;
-        var playing = state && state.status === "playing";
-        var paused = state && state.status === "paused";
-        btnPlay.disabled = !hasTunes || playing;
-        btnPause.disabled = !playing;
-        btnPrev.disabled = !hasTunes;
-        btnNext.disabled = !hasTunes;
-        btnShuffle.textContent = "⇄ mode: " + (state && state.mode === "shuffled" ? "shuffled" : "ordered");
-        if (state) {
-            queueInfo.textContent = state.queueLen ? "(" + state.index + " / " + state.queueLen + " in cycle)" : "";
+    /* ── equalizer (works only for same-origin stream audio) ── */
+
+    var audioCtx = null, analyser = null, eqRunning = false, eqRaf = 0;
+
+    function ensureAudioGraph() {
+        if (!streamOn || analyser || !audioEl) return;
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC || !eqCanvas) return;
+        try {
+            audioCtx = new AC();
+            var src = audioCtx.createMediaElementSource(audioEl);
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 128;
+            src.connect(analyser);
+            analyser.connect(audioCtx.destination);
+        } catch (e) {
+            // createMediaElementSource reroutes audio through the graph; a broken
+            // graph would render the element silent, so abandon stream mode.
+            analyser = null;
+            streamOn = false;
+            try { localStorage.setItem("tunesday-stream", "0"); } catch (e2) {}
+            updateStreamBtn();
+            releaseAudio();
+            note("this browser cannot build the audio graph — using the YouTube player");
         }
     }
+
+    function startEq() {
+        if (!analyser || !eqCanvas || eqRunning) return;
+        eqRunning = true;
+        eqCanvas.hidden = false;
+        var c2d = eqCanvas.getContext("2d");
+        var data = new Uint8Array(analyser.frequencyBinCount);
+        function frame() {
+            if (!eqRunning) return;
+            analyser.getByteFrequencyData(data);
+            var w = eqCanvas.width, h = eqCanvas.height;
+            c2d.clearRect(0, 0, w, h);
+            c2d.fillStyle = "#0f0";
+            var bars = 32, bw = w / bars;
+            for (var i = 0; i < bars; i++) {
+                var v = data[i * 2] / 255;
+                var bh = Math.max(2, v * (h - 2));
+                c2d.fillRect(i * bw + 1, h - bh, bw - 2, bh);
+            }
+            eqRaf = requestAnimationFrame(frame);
+        }
+        frame();
+        if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    }
+
+    function stopEq() {
+        eqRunning = false;
+        if (eqRaf) cancelAnimationFrame(eqRaf);
+        if (eqCanvas) eqCanvas.hidden = true;
+    }
+
+    /* ── controls ── */
+
+    joinBtn.addEventListener("click", function () {
+        ensureAudioGraph(); // user gesture: right moment for AudioContext + graph
+        if (loadYouTubeAPI()) createIframe();
+        else window.onYouTubeIframeAPIReady = createIframe;
+        if (state && state.tune && streamOn) { joined = true; syncAudio(); }
+    });
 
     function command(path, fields) {
         var body = new URLSearchParams(fields || {}).toString();
@@ -170,8 +354,8 @@
 
     btnPlay.addEventListener("click", function () { command("play"); });
     btnPause.addEventListener("click", function () { command("pause"); });
-    btnNext.addEventListener("click", function () { command("next"); });
     btnPrev.addEventListener("click", function () { command("prev"); });
+    btnNext.addEventListener("click", function () { command("next"); });
     btnShuffle.addEventListener("click", function () {
         var mode = state && state.mode === "shuffled" ? "ordered" : "shuffled";
         command("mode", { mode: mode });
@@ -183,18 +367,50 @@
         });
     });
 
-    // Position ticker, drift correction, and the "ended" reporter.
+    function renderListeners(list) {
+        listenersEl.innerHTML = "";
+        if (!list.length) {
+            listenersEl.innerHTML = '<li class="muted">nobody connected</li>';
+            return;
+        }
+        list.forEach(function (l) {
+            var li = document.createElement("li");
+            li.className = l.live ? "" : "muted";
+            li.textContent = (l.live ? "⏻" : "○") + " " + l.alias
+                + (l.provider ? "  [ " + l.provider + " ]" : "")
+                + (l.isYou ? "  ← you" : "")
+                + (l.live ? "" : "  (left)");
+            listenersEl.appendChild(li);
+        });
+    }
+
+    function renderControls() {
+        var hasTunes = state && state.queueLen > 0;
+        var playing = state && state.status === "playing";
+        btnPlay.disabled = !hasTunes || playing;
+        btnPause.disabled = !playing;
+        btnPrev.disabled = !hasTunes;
+        btnNext.disabled = !hasTunes;
+        btnShuffle.textContent = "⇄ mode: " + (state && state.mode === "shuffled" ? "shuffled" : "ordered");
+        if (state) {
+            queueInfo.textContent = state.queueLen ? "(" + (state.index + 1) + " / " + state.queueLen + " in cycle)" : "";
+        }
+    }
+
+    // ticker + drift correction + track-end reporting
     setInterval(function () {
         if (!state || !state.tune) return;
         var pos = position();
-        var dur = joined && player && player.getDuration ? player.getDuration() : 0;
-        posEl.textContent = state.status === "idle" ? "" :
-            fmt(pos) + (dur > 1 ? " / " + fmt(dur) : "") + (joined ? "" : "  (join to hear it)");
+        var dur = mediaDuration();
+        var live = mediaTime();
+        posEl.textContent = fmt(state.status === "paused" ? pos : Math.max(live, pos))
+            + (dur > 1 ? " / " + fmt(dur) : "")
+            + (joined || audioActive ? "" : "  (join to hear it)");
 
-        if (joined && player && state.status === "playing") {
-            var cur = player.getCurrentTime();
-            if (Math.abs(cur - pos) > 1.5) player.seekTo(pos, true);
-            if (dur > 1 && cur >= dur - 1 && endedSentFor !== state.tune.id) {
+        if (!joined && !audioActive) return;
+        if (state.status === "playing") {
+            if (dur > 1 && Math.abs(live - pos) > 1.5) mediaSeek(pos);
+            if (dur > 1 && live >= dur - 1 && endedSentFor !== state.tune.id) {
                 endedSentFor = state.tune.id;
                 command("ended", { tune_id: state.tune.id });
             }
@@ -206,5 +422,6 @@
         return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2);
     }
 
+    updateStreamBtn();
     connect();
 })();

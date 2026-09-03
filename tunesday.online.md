@@ -567,20 +567,34 @@ tunesday.online {
 
 ## 12. Open Questions / Future Work
 
-### Phase 2 Features
+### Completed since the original plan
 
-- **Radio mode:** web player with queue and stats.
-- **Quiz:** server-integrated "Guess the Provider" with leaderboard.
+- ✅ Radio mode (synced listening room, play stats)
+- ✅ Quiz ("Guess the Provider" server-integrated, leaderboards)
+- ✅ **Audio proxy / stream mode:** `GET /teams/{slug}/radio/stream?tune_id=N` resolves
+  audio-only YouTube formats (itag 140 → 251) via kkdai, caches signed URLs (5 h TTL,
+  singleflight), proxies with Range passthrough, member-gated, team-scoped tune ids
+  (never an open proxy), per-team concurrency cap of 4. Client-side per-user
+  `⚡ stream` toggle with instant auto-fallback to the YouTube IFrame player. The
+  Web Audio equalizer canvas lights up only in stream mode (same-origin audio).
+  Caveat: datacenter IPs may hit YouTube bot-detection; the fallback keeps radio
+  usable if that happens on the VPS.
+- ✅ JSON export + replace-import with warning page
+- ✅ Optional passwords (magic link stays the recovery path; no reset flow)
+
+### Remaining backlog
+
 - **Scheduled ceremonies:** recurring Tuesday ceremonies.
-- **Tune of the week:** auto-generated from play stats.
-- **Equalizer visualization:** Web Audio API canvas bars.
+- **Tune of the week:** auto-generated from play stats (data already collected).
+- **Team settings:** e.g. whether the Tuesday lock is enforced anywhere again.
 - **CLI sync:** `--sync` flag for CLI to push/pull from tunesday.online API.
+- **Ceremony algorithm revisit:** web uses uniform-random among connected
+  attendees (minus last submitter); CLI uses the bottom-half pool — to be
+  harmonized or documented deliberately.
 
 ### Decisions to Confirm
 
-- Should exported JSON include `tunesday.json` fields exactly (including recalculated counts), or a richer format?
-- Should import merge or replace existing team data?
-- Should we use UUIDs or ULIDs for primary keys?
+- Should we use UUIDs or ULIDs for primary keys? (currently UUIDs)
 
 ---
 
