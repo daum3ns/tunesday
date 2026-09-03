@@ -1,0 +1,58 @@
+package main
+
+import (
+	"log"
+	"net/http"
+
+	"tunesday/internal/playlist"
+	"tunesday/tunesday.online/internal/auth"
+	"tunesday/tunesday.online/internal/config"
+	"tunesday/tunesday.online/internal/db"
+	"tunesday/tunesday.online/internal/email"
+	"tunesday/tunesday.online/internal/live"
+	"tunesday/tunesday.online/internal/radio"
+	"tunesday/tunesday.online/internal/store"
+	"tunesday/tunesday.online/internal/web"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	database, err := db.Open(cfg.SQLitePath)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer database.Close()
+
+	deps := web.Deps{
+		DB:            database,
+		Users:         store.NewUserStore(database),
+		Verifications: store.NewVerificationTokenStore(database),
+		Sessions:      auth.NewSessionStore(cfg.SessionSecret, cfg.SessionSecure, cfg.SessionLifetime),
+		Email:         email.NewService(cfg),
+		Teams:         store.NewTeamStore(database),
+		Providers:     store.NewProviderStore(database),
+		Members:       store.NewTeamMemberStore(database),
+		Invitations:   store.NewInvitationStore(database),
+		Tunes:         store.NewTuneStore(database),
+		Ceremonies:    store.NewCeremonyStore(database),
+		PlayStats:     store.NewPlayStatStore(database),
+		Quiz:          store.NewQuizStore(database),
+		Rooms:         live.NewManager(),
+		Radio:         radio.NewManager(),
+		YT:            playlist.NewYouTube(),
+	}
+
+	wh, err := web.NewHandler(cfg, deps)
+	if err != nil {
+		log.Fatalf("web handlers: %v", err)
+	}
+
+	log.Printf("tunesday.online listening on %s", cfg.ListenAddr)
+	if err := http.ListenAndServe(cfg.ListenAddr, wh.Router()); err != nil {
+		log.Fatalf("server: %v", err)
+	}
+}

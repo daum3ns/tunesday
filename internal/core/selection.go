@@ -49,7 +49,7 @@ func SelectProvider(active []string, counts map[string]int, lastProvider string,
 
 // ComputeProviderPool returns the eligible pool under the bottom-half rule
 // without drawing a winner. The pool is sorted alphabetically. This split lets
-// callers (e.g. tunesday.fm ceremonies) record the pool and seed at start time
+// callers (e.g. tunesday.online ceremonies) record the pool and seed at start time
 // and draw the winner later, keeping every ceremony reproducible.
 func ComputeProviderPool(active []string, counts map[string]int, lastProvider string) []string {
 	if len(active) == 0 {

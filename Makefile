@@ -12,7 +12,7 @@ build:
 
 build-server:
 	@mkdir -p $(BUILD-DIRECTORY)
-	go build -o $(BUILD-DIRECTORY)/tunesday.fm ./tunesday.fm/cmd/server
+	go build -o $(BUILD-DIRECTORY)/tunesday.online ./tunesday.online/cmd/server
 
 test: build
 	go clean -testcache
