@@ -222,7 +222,71 @@ func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*CeremonyH
 	return out, rows.Err()
 }
 
-// AddAttendee records a ceremony attendee with an alias, ignoring duplicates.
+// ProviderWinCount is one provider's ceremony win record.
+type ProviderWinCount struct {
+	ProviderName      string
+	Wins              int
+	TotalCeremonies   int // how many times they appeared in the pool
+}
+
+// WinCounts returns per-provider win counts for completed ceremonies in a team.
+func (s *CeremonyStore) WinCounts(teamID string) ([]ProviderWinCount, error) {
+	rows, err := s.db.Query(
+		`SELECT p.name,
+		        SUM(CASE WHEN c.winner_provider_id = p.id THEN 1 ELSE 0 END) AS wins,
+		        COUNT(*) AS total
+		 FROM ceremonies c, providers p
+		 WHERE c.team_id = ? AND c.revealed_at IS NOT NULL
+		   AND p.team_id = ?
+		 GROUP BY p.id ORDER BY wins DESC`,
+		teamID, teamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ProviderWinCount
+	for rows.Next() {
+		var r ProviderWinCount
+		if err := rows.Scan(&r.ProviderName, &r.Wins, &r.TotalCeremonies); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// CeremonyStats holds summary ceremony statistics.
+type CeremonyStats struct {
+	TotalCeremonies int
+	AvgAttendance   float64
+}
+
+// Stats returns total ceremony count and average attendance for a team.
+func (s *CeremonyStore) Stats(teamID string) (CeremonyStats, error) {
+	var out CeremonyStats
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM ceremonies
+		 WHERE team_id = ? AND revealed_at IS NOT NULL`, teamID,
+	).Scan(&out.TotalCeremonies)
+	if err != nil {
+		return out, err
+	}
+	err = s.db.QueryRow(
+		`SELECT AVG(cnt) FROM (
+			SELECT COUNT(*) AS cnt
+			FROM ceremonies c
+			JOIN ceremony_attendees ca ON ca.ceremony_id = c.id
+			WHERE c.team_id = ? AND c.revealed_at IS NOT NULL
+			GROUP BY c.id
+		)`, teamID,
+	).Scan(&out.AvgAttendance)
+	if err != nil && err != sql.ErrNoRows {
+		return out, err
+	}
+	return out, nil
+}
 func (s *CeremonyStore) AddAttendee(ceremonyID, userID, alias string) error {
 	_, err := s.db.Exec(
 		`INSERT INTO ceremony_attendees (ceremony_id, user_id, alias) VALUES (?, ?, ?)

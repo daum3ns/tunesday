@@ -63,6 +63,9 @@ func (h *Handler) Router() http.Handler {
 		r.Get("/teams/{slug}/quiz", h.QuizPage)
 		r.Post("/teams/{slug}/quiz/result", h.QuizResult)
 
+		// The Stats Page
+		r.Get("/teams/{slug}/stats", h.StatsPage)
+
 		// The Radio Room
 		r.Get("/teams/{slug}/radio", h.RadioPage)
 		r.Get("/teams/{slug}/radio/ws", h.RadioWS)

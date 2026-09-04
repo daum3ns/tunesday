@@ -63,11 +63,12 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		"verify.html", "message.html", "onboarding.html", "team_new.html",
 		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
 		"ceremony.html", "import.html", "import_confirm.html", "login_link.html",
-		"radio.html", "quiz.html",
+		"radio.html", "quiz.html", "stats.html",
 	}
 	tmpls := make(map[string]*template.Template)
+	funcMap := template.FuncMap{"add1": func(i int) int { return i + 1 }}
 	for _, page := range pages {
-		tmpl, err := template.ParseFS(templatesFS, "templates/base.html", "templates/"+page)
+		tmpl, err := template.New(page).Funcs(funcMap).ParseFS(templatesFS, "templates/base.html", "templates/"+page)
 		if err != nil {
 			return nil, err
 		}

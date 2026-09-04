@@ -1,0 +1,137 @@
+{{define "content"}}
+<h2>Team Stats</h2>
+
+<h3>Radio</h3>
+
+{{if .TuneOfTheWeek}}
+<div class="terminal-box tune-of-week">
+    <p class="muted">tune of the week</p>
+    <p class="tune-of-week-title">♪ {{.TuneOfTheWeek.Title}}</p>
+    <p class="muted">{{.TuneOfTheWeek.ProviderName}} — {{.TuneOfTheWeek.Count}} plays</p>
+</div>
+{{end}}
+
+<p class="muted">{{.TotalPlays}} total plays</p>
+
+{{if .MostPlayed}}
+<h4>Most Played</h4>
+<table class="terminal-table">
+    <thead><tr><th>#</th><th>title</th><th>provider</th><th>plays</th></tr></thead>
+    <tbody>
+    {{range $i, $p := .MostPlayed}}
+    <tr>
+        <td>{{add1 $i}}</td>
+        <td>{{$p.Title}}</td>
+        <td>{{$p.ProviderName}}</td>
+        <td>{{$p.Count}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .ProviderPlays}}
+<h4>Provider Play Counts</h4>
+<ul class="stat-bars">
+    {{range .ProviderPlays}}
+    <li><span class="stat-bar-label">{{.ProviderName}}</span> <span class="stat-bar-num">{{.Count}}</span></li>
+    {{end}}
+</ul>
+{{end}}
+
+<h3>Ceremonies</h3>
+
+<div class="stat-grid">
+    <div class="stat"><span class="stat-num">{{.CeremonyTotal}}</span> ceremonies</div>
+    <div class="stat"><span class="stat-num">{{printf "%.1f" .AvgAttendance}}</span> avg attendance</div>
+</div>
+
+{{if .WinRates}}
+<h4>Provider Win Rates</h4>
+<table class="terminal-table">
+    <thead><tr><th>provider</th><th>wins</th><th>appeared</th><th>win %</th></tr></thead>
+    <tbody>
+    {{range .WinRates}}
+    <tr>
+        <td>{{.ProviderName}}</td>
+        <td>{{.Wins}}</td>
+        <td>{{.TotalCeremonies}}</td>
+        <td>{{.WinPct}}%</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="muted">No completed ceremonies yet.</p>
+{{end}}
+
+<h3>Quiz</h3>
+
+{{if .ProviderRecognition}}
+<h4>Provider Recognition Rates</h4>
+<table class="terminal-table">
+    <thead><tr><th>provider</th><th>correct</th><th>total</th><th>accuracy</th></tr></thead>
+    <tbody>
+    {{range .ProviderRecognition}}
+    <tr>
+        <td>{{.ProviderName}}</td>
+        <td>{{.Correct}}</td>
+        <td>{{.Total}}</td>
+        <td>{{.Accuracy}}%</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .TrickiestTunes}}
+<h4>Trickiest Tunes</h4>
+<table class="terminal-table">
+    <thead><tr><th>title</th><th>provider</th><th>quizzed</th><th>accuracy</th></tr></thead>
+    <tbody>
+    {{range .TrickiestTunes}}
+    <tr>
+        <td>{{.Title}}</td>
+        <td>{{.ProviderName}}</td>
+        <td>{{.TimesQuizzed}}</td>
+        <td>{{.Accuracy}}%</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .QuizBests}}
+<h4>Leaderboard</h4>
+<table class="terminal-table">
+    <thead><tr><th>player</th><th>best</th><th>games</th></tr></thead>
+    <tbody>
+    {{range .QuizBests}}
+    <tr>
+        <td>{{.UserEmail}}</td>
+        <td>{{.Score}}/{{.Total}} ({{.Pct}}%)</td>
+        <td>{{.Games}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .RecentGames}}
+<h4>Recent Games</h4>
+<table class="terminal-table">
+    <thead><tr><th>when</th><th>player</th><th>mode</th><th>score</th></tr></thead>
+    <tbody>
+    {{range .RecentGames}}
+    <tr>
+        <td>{{.FinishedAt.Format "Jan 02 15:04"}}</td>
+        <td>{{.UserEmail}}</td>
+        <td>{{.Mode}}</td>
+        <td>{{.Score}}/{{.Total}} ({{.Pct}}%)</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{end}}

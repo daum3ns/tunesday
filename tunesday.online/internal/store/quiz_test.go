@@ -112,3 +112,89 @@ func TestQuizLeaderboard(t *testing.T) {
 		t.Fatalf("unexpected second recent row: %+v", recent[1])
 	}
 }
+
+func TestProviderRecognition(t *testing.T) {
+	database := newTestDB(t)
+	teams := NewTeamStore(database)
+	providers := NewProviderStore(database)
+	qs := NewQuizStore(database)
+
+	createUser(t, database, "qa", "qa@example.com")
+	teams.Create(&Team{ID: "qt", Name: "Q", Slug: "q", AdminID: "qa"})
+	p1, _ := providers.Create("qt", "Lukas")
+	p2, _ := providers.Create("qt", "Marcel")
+
+	t1 := insertTune(t, database, "qt", "A", "aaaaaaaaaaa", p1.ID)
+	t2 := insertTune(t, database, "qt", "B", "bbbbbbbbbbb", p2.ID)
+
+	// Submit quiz rounds with known correctness.
+	rounds := []QuizRound{
+		{TuneID: t1, GuessedProvider: "Lukas", WasCorrect: true},
+		{TuneID: t1, GuessedProvider: "Lukas", WasCorrect: true},
+		{TuneID: t1, GuessedProvider: "Marcel", WasCorrect: false},
+		{TuneID: t2, GuessedProvider: "Marcel", WasCorrect: true},
+		{TuneID: t2, GuessedProvider: "Marcel", WasCorrect: false},
+	}
+	qs.SubmitGame(&QuizSubmission{TeamID: "qt", UserID: "qa", Mode: "all", Rounds: rounds})
+
+	recog, err := qs.ProviderRecognition("qt")
+	if err != nil {
+		t.Fatalf("ProviderRecognition: %v", err)
+	}
+	if len(recog) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(recog))
+	}
+	// Lukas: 2/3 correct ≈ 67%
+	if recog[0].ProviderName != "Lukas" || recog[0].Correct != 2 || recog[0].Total != 3 {
+		t.Fatalf("unexpected Lukas: %+v", recog[0])
+	}
+	// Marcel: 1/2 correct = 50%
+	if recog[1].ProviderName != "Marcel" || recog[1].Correct != 1 || recog[1].Total != 2 {
+		t.Fatalf("unexpected Marcel: %+v", recog[1])
+	}
+}
+
+func TestTrickiestTunes(t *testing.T) {
+	database := newTestDB(t)
+	teams := NewTeamStore(database)
+	providers := NewProviderStore(database)
+	qs := NewQuizStore(database)
+
+	createUser(t, database, "qa", "qa@example.com")
+	teams.Create(&Team{ID: "qt", Name: "Q", Slug: "q", AdminID: "qa"})
+	p, _ := providers.Create("qt", "Lukas")
+
+	t1 := insertTune(t, database, "qt", "Hard Song", "aaaaaaaaaaa", p.ID)
+	t2 := insertTune(t, database, "qt", "Easy Song", "bbbbbbbbbbb", p.ID)
+
+	// Hard Song: 1 correct out of 5 (20%).
+	for i := 0; i < 4; i++ {
+		qs.SubmitGame(&QuizSubmission{TeamID: "qt", UserID: "qa", Mode: "all", Rounds: []QuizRound{
+			{TuneID: t1, GuessedProvider: "X", WasCorrect: false},
+		}})
+	}
+	qs.SubmitGame(&QuizSubmission{TeamID: "qt", UserID: "qa", Mode: "all", Rounds: []QuizRound{
+		{TuneID: t1, GuessedProvider: "X", WasCorrect: true},
+	}})
+
+	// Easy Song: 4 correct out of 4 (100%).
+	for i := 0; i < 4; i++ {
+		qs.SubmitGame(&QuizSubmission{TeamID: "qt", UserID: "qa", Mode: "all", Rounds: []QuizRound{
+			{TuneID: t2, GuessedProvider: "X", WasCorrect: true},
+		}})
+	}
+
+	tricky, err := qs.TrickiestTunes("qt", 5)
+	if err != nil {
+		t.Fatalf("TrickiestTunes: %v", err)
+	}
+	if len(tricky) != 2 {
+		t.Fatalf("expected 2 tunes, got %d", len(tricky))
+	}
+	if tricky[0].Title != "Hard Song" || tricky[0].Accuracy != 20 {
+		t.Fatalf("expected Hard Song 20%%, got %+v", tricky[0])
+	}
+	if tricky[1].Title != "Easy Song" || tricky[1].Accuracy != 100 {
+		t.Fatalf("expected Easy Song 100%%, got %+v", tricky[1])
+	}
+}

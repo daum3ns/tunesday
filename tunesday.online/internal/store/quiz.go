@@ -225,3 +225,82 @@ func (s *QuizStore) Bests(teamID string) ([]*TeamBest, error) {
 	})
 	return out, nil
 }
+
+// ProviderRecognition is one provider's recognition rate from quiz guesses.
+type ProviderRecognition struct {
+	ProviderName string
+	Correct      int
+	Total        int
+	Accuracy     int // percentage 0-100
+}
+
+// ProviderRecognition returns how often quiz players correctly identify each provider.
+func (s *QuizStore) ProviderRecognition(teamID string) ([]ProviderRecognition, error) {
+	rows, err := s.db.Query(
+		`SELECT COALESCE(p.name, ''),
+		        COUNT(*) AS total,
+		        SUM(qr.was_correct) AS correct,
+		        ROUND(100.0 * SUM(qr.was_correct) / COUNT(*))
+		 FROM quiz_rounds qr
+		 JOIN tunes t ON t.id = qr.tune_id
+		 JOIN providers p ON p.id = t.provider_id
+		 JOIN quiz_games qg ON qg.id = qr.game_id
+		 WHERE qg.team_id = ?
+		 GROUP BY p.id ORDER BY correct DESC`,
+		teamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []ProviderRecognition
+	for rows.Next() {
+		var r ProviderRecognition
+		if err := rows.Scan(&r.ProviderName, &r.Total, &r.Correct, &r.Accuracy); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// TrickyTune is a tune that players struggle to identify.
+type TrickyTune struct {
+	Title        string
+	ProviderName string
+	TimesQuizzed int
+	Accuracy     int // percentage 0-100
+}
+
+// TrickiestTunes returns tunes with the lowest quiz accuracy (min 3 quizzings).
+func (s *QuizStore) TrickiestTunes(teamID string, limit int) ([]TrickyTune, error) {
+	rows, err := s.db.Query(
+		`SELECT t.title, COALESCE(p.name, ''),
+		        COUNT(*) AS times,
+		        ROUND(100.0 * SUM(qr.was_correct) / COUNT(*))
+		 FROM quiz_rounds qr
+		 JOIN tunes t ON t.id = qr.tune_id
+		 LEFT JOIN providers p ON p.id = t.provider_id
+		 JOIN quiz_games qg ON qg.id = qr.game_id
+		 WHERE qg.team_id = ?
+		 GROUP BY qr.tune_id
+		 HAVING COUNT(*) >= 3
+		 ORDER BY ROUND(100.0 * SUM(qr.was_correct) / COUNT(*)) ASC LIMIT ?`,
+		teamID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []TrickyTune
+	for rows.Next() {
+		var r TrickyTune
+		if err := rows.Scan(&r.Title, &r.ProviderName, &r.TimesQuizzed, &r.Accuracy); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
