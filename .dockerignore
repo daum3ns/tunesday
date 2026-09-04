@@ -1,13 +1,10 @@
 .git
 .idea
 build/
-docs/
 AGENTS.md
-webhook.md
 tunesday.json
-example.tunesday.json
-tunesday.fm.md
 tunesday.online.md
+deployment.md
 tunesday.online/data/
 tunesday.online/.env
 tunesday.online/.env.example

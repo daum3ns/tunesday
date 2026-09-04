@@ -1,20 +1,13 @@
 SHELL := /bin/bash
 BUILD-DIRECTORY := ./build
-BINARY := tunesday
-BINARY-PATH := $(BUILD-DIRECTORY)/$(BINARY)
 
-.PHONY: build build-server
-
-build:
-	@mkdir -p $(BUILD-DIRECTORY)
-	@rm -rf $(BINARY-PATH)
-	go build -o $(BINARY-PATH) ./cmd/tunesday
+.PHONY: build-server test clean
 
 build-server:
 	@mkdir -p $(BUILD-DIRECTORY)
 	go build -o $(BUILD-DIRECTORY)/tunesday.online ./tunesday.online/cmd/server
 
-test: build
+test: build-server
 	go clean -testcache
 	go test -v ./...
 

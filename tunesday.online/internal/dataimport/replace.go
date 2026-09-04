@@ -223,8 +223,7 @@ func ReplaceTeam(database *db.DB, teamID string, data *core.Data) (*ReplaceResul
 }
 
 // BuildExport assembles a tunesday.json payload from SQLite reads.
-// Participant counts are recalculated from the actual tunes, matching the
-// CLI's load semantics.
+// Participant counts are recalculated from the actual tunes.
 func BuildExport(providers []*store.ProviderView, tunes []*store.TuneView) *core.Data {
 	data := &core.Data{
 		Participants: map[string]int{},

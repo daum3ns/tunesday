@@ -172,7 +172,7 @@ func TestBuildExportRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected exported tunes: %+v", exported.Tunes)
 	}
 
-	// The export must parse cleanly back through Parse (CLI parity).
+	// The export must parse cleanly back through Parse.
 	raw, err := json.Marshal(exported)
 	if err != nil {
 		t.Fatal(err)

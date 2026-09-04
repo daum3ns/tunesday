@@ -2,10 +2,10 @@
 
 ## 1. Overview
 
-`tunesday.online` is the web-based successor to the `tunesday` CLI. It turns the local Tuesday ritual into an online ceremony where team members join via a shared session link and watch the provider selection together.
+`tunesday.online` is a web-based ritual app for teams. It turns the Tuesday ritual into an online ceremony where team members join via a shared session link and watch the provider selection together.
 
 **Key design decisions:**
-- **SQLite is the source of truth.** `tunesday.json` is used only for initial migration from the CLI and for export/import.
+- **SQLite is the source of truth.** `tunesday.json` is used only for initial migration and for export/import.
 - **Admin has a password-protected account.** Team members join via magic links sent by email — no passwords.
 - **Multiple admins per team.** Any admin can start a ceremony, invite members, and manage providers.
 - **Single Go module.** The web service lives in `tunesday.online/` under the existing `tunesday` module so it can reuse `internal/core` and `internal/playlist`.
@@ -592,10 +592,9 @@ tunesday.online {
 - **Scheduled ceremonies:** recurring Tuesday ceremonies.
 - **Tune of the week:** auto-generated from play stats (data already collected).
 - **Team settings:** e.g. whether the Tuesday lock is enforced anywhere again.
-- **CLI sync:** `--sync` flag for CLI to push/pull from tunesday.online API.
-- **Ceremony algorithm revisit:** web uses uniform-random among connected
-  attendees (minus last submitter); CLI uses the bottom-half pool — to be
-  harmonized or documented deliberately.
+- **Ceremony algorithm revisit:** pool is uniform-random among connected
+  eligible attendees (minus last submitter) — may want a tune-count balance
+  to match the old CLI's fairness goal.
 
 ### Decisions to Confirm
 
