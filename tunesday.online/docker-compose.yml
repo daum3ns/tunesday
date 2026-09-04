@@ -1,8 +1,11 @@
+x-app-build: &app-build
+  context: ..
+  dockerfile: tunesday.online/Dockerfile
+
 services:
   tunesday:
-    build:
-      context: ..
-      dockerfile: tunesday.online/Dockerfile
+    image: tunesday-online:local
+    build: *app-build
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -21,6 +24,17 @@ services:
       - TUNESDAY_ONLINE_SMTP_FROM=${TUNESDAY_ONLINE_SMTP_FROM:-noreply@tunesday.online}
       - TUNESDAY_ONLINE_YTDLP_PATH=${TUNESDAY_ONLINE_YTDLP_PATH:-yt-dlp}
       - TUNESDAY_MASTER_ADMIN_EMAIL=${TUNESDAY_MASTER_ADMIN_EMAIL:-}
+    restart: unless-stopped
+
+  backup:
+    image: tunesday-online:local
+    build: *app-build
+    volumes:
+      - ./data:/data
+    entrypoint: ["/bin/sh"]
+    command:
+      - -c
+      - "sleep 120; while true; do /app/scripts/backup.sh; sleep 86400; done"
     restart: unless-stopped
 
   caddy:

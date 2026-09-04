@@ -23,6 +23,8 @@ RUN python3 -m pip install --no-cache-dir --break-system-packages yt-dlp
 WORKDIR /app
 
 COPY --from=builder /build/server .
+COPY scripts/backup.sh /app/scripts/backup.sh
+RUN chmod +x /app/scripts/backup.sh
 
 EXPOSE 8080
 

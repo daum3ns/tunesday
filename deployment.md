@@ -132,4 +132,33 @@ tunesday.online: listening on :8080
 | View logs | `docker compose logs -f tunesday` |
 | Restart | `docker compose restart` |
 | Update code | `git pull && docker compose up -d --build` |
-| Backup DB | `cp data/tunesday.db data/tunesday.db.bak` |
+| Backup DB | automatic daily via `backup` sidecar; manual: `docker compose exec backup /app/scripts/backup.sh`; view: `ls data/backups/` |
+
+## Backups & Restore
+
+The `backup` compose service runs once daily. It uses SQLite `VACUUM INTO` to
+produce a consistent single-file snapshot (safe on a live WAL-mode DB) into
+`./data/backups/`, keeps the newest 7 daily backups plus 4 weekly (Sundays),
+and prunes the rest. Backups live on the same disk as the DB for now.
+
+```sh
+# Manual backup
+docker compose exec backup /app/scripts/backup.sh
+
+# List backups
+ls data/backups/
+```
+
+### Restore runbook
+
+```
+1. Pick a backup:          ls data/backups/
+2. Stop the app:           docker compose stop tunesday
+3. Safely swap the DB:
+       rm -f data/tunesday.db data/tunesday.db-wal data/tunesday.db-shm
+       cp data/backups/tunesday-<DATE>.db data/tunesday.db
+4. Start:                  docker compose up -d tunesday
+5. Verify:                 curl -k https://tunesday.online/health
+   Then log in as master admin and spot-check a team, radio, and ceremony.
+6. If wrong: keep the swapped-out DB aside; re-run with another backup.
+```
