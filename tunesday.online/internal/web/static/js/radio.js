@@ -7,7 +7,9 @@
 
     var statusEl  = document.getElementById("radio-status");
     var trackEl   = document.getElementById("radio-track");
+    var metaEl    = document.getElementById("radio-meta");
     var posEl     = document.getElementById("radio-pos");
+    var nowPlayingBox = document.getElementById("radio-now-playing");
     var progressFill = document.getElementById("radio-progress-fill");
     var audioEl   = document.getElementById("radio-audio");
     var listenersEl = document.getElementById("radio-listeners");
@@ -93,7 +95,10 @@
         currentTuneId = tuneId;
         resetProgress();
         statusEl.textContent = "loading…";
-        trackEl.textContent = "♪ " + tuneTitle(tuneId);
+        var meta = tuneMeta(tuneId);
+        trackEl.textContent = "♪ " + meta.title;
+        setMeta(meta);
+        startPosTimer();
 
         fetch(basePath + "/stream?tune_id=" + tuneId)
             .then(function (res) {
@@ -106,9 +111,8 @@
                 audioEl.load();
                 audioEl.play().then(function () {
                     statusEl.textContent = "▶ live";
-                    trackEl.textContent = "♪ " + tuneTitle(tuneId);
+                    trackEl.textContent = "♪ " + tuneMeta(tuneId).title;
                     reportNowPlaying(tuneId);
-                    startPosTimer();
                 }).catch(function () {
                     statusEl.textContent = "▶ live (click play to unmute)";
                 });
@@ -118,30 +122,65 @@
             });
     }
 
-    function tuneTitle(id) {
-        // Fallback: scan the table rows for the title text.
+    function tuneMeta(id) {
+        // Fallback: scan the table rows for title / provider / date.
         var rows = document.querySelectorAll("tr[data-tune]");
         for (var i = 0; i < rows.length; i++) {
             if (parseInt(rows[i].getAttribute("data-tune"), 10) === id) {
                 var cells = rows[i].querySelectorAll("td");
-                return cells.length > 1 ? cells[1].textContent : "unknown";
+                var title = cells.length > 1 ? cells[1].textContent : "unknown";
+                var provider = rows[i].getAttribute("data-provider") || "";
+                var added = rows[i].getAttribute("data-added") || "";
+                return { title: title, provider: provider, added: added };
             }
         }
-        return "unknown";
+        return { title: "unknown", provider: "", added: "" };
+    }
+
+    function setMeta(meta) {
+        if (!metaEl) return;
+        if (meta.provider || meta.added) {
+            var parts = [];
+            if (meta.provider) parts.push("provided by " + meta.provider);
+            if (meta.added) parts.push(meta.added);
+            metaEl.textContent = parts.join(" · ");
+        } else {
+            metaEl.textContent = "";
+        }
     }
 
     function startPosTimer() {
         if (posTimer) clearInterval(posTimer);
         posTimer = setInterval(function () {
-            if (audioEl.paused || !audioEl.duration) { posEl.textContent = ""; progressFill.style.width = "0%"; return; }
-            posEl.textContent = fmt(audioEl.currentTime) + " / " + fmt(audioEl.duration);
-            progressFill.style.width = (audioEl.currentTime / audioEl.duration * 100) + "%";
+            if (!audioEl.duration) {
+                if (audioEl.paused) { posEl.textContent = ""; progressFill.style.width = "0%"; }
+                return;
+            }
+            var pos = audioEl.currentTime;
+            if (audioEl.paused) return; // keep frozen; blink is handled via class
+            posEl.textContent = fmt(pos) + " / " + fmt(audioEl.duration);
+            progressFill.style.width = (pos / audioEl.duration * 100) + "%";
         }, 250);
     }
 
     function resetProgress() {
         posEl.textContent = "";
         progressFill.style.width = "0%";
+        if (nowPlayingBox) nowPlayingBox.classList.remove("blinking");
+    }
+
+    function blinkPausedOn() {
+        if (!nowPlayingBox) return;
+        // Keep the current frozen position text.
+        if (!posEl.textContent && audioEl.duration) {
+            posEl.textContent = fmt(audioEl.currentTime) + " / " + fmt(audioEl.duration);
+            progressFill.style.width = (audioEl.currentTime / audioEl.duration * 100) + "%";
+        }
+        nowPlayingBox.classList.add("blinking");
+    }
+
+    function blinkPausedOff() {
+        if (nowPlayingBox) nowPlayingBox.classList.remove("blinking");
     }
 
     function fmt(s) {
@@ -195,7 +234,7 @@
         if (currentTuneId && audioEl.src) {
             audioEl.play().then(function () {
                 statusEl.textContent = "▶ live";
-                startPosTimer();
+                blinkPausedOff();
             }).catch(function () {});
             return;
         }
@@ -206,8 +245,7 @@
     btnPause.addEventListener("click", function () {
         audioEl.pause();
         statusEl.textContent = "❚❚ paused";
-        if (posTimer) { clearInterval(posTimer); posTimer = null; }
-        resetProgress();
+        blinkPausedOn();
     });
 
     btnNext.addEventListener("click", nextTune);
@@ -229,12 +267,14 @@
         statusEl.textContent = "▶ live";
         btnPlay.hidden = true;
         btnPause.hidden = false;
+        blinkPausedOff();
         startPosTimer();
     });
 
     audioEl.addEventListener("pause", function () {
         btnPlay.hidden = false;
         btnPause.hidden = true;
+        blinkPausedOn();
     });
 
     audioEl.addEventListener("ended", function () {

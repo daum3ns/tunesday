@@ -23,7 +23,7 @@ const (
 	// ceremonyCountdownMs is the pre-roll every screen shows after the host
 	// arms the needle. The winner is already committed server-side when this
 	// goes out, so nobody can "un-drop" it.
-	ceremonyCountdownMs = 3000
+	ceremonyCountdownMs = 5000
 )
 
 var wsUpgrader = websocket.Upgrader{

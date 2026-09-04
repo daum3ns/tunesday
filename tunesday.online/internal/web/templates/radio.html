@@ -4,9 +4,12 @@
 <div id="radio-now" class="terminal-box">
     <p id="radio-status">connecting…</p>
     <p id="radio-track" class="muted">nothing playing</p>
+    <p class="muted" id="radio-meta"></p>
     <audio id="radio-audio" preload="none"></audio>
-    <div id="radio-progress"><div id="radio-progress-fill"></div></div>
-    <p class="muted" id="radio-pos"></p>
+    <div id="radio-now-playing">
+        <div id="radio-progress"><div id="radio-progress-fill"></div></div>
+        <p class="muted" id="radio-pos"></p>
+    </div>
 </div>
 
 <div class="radio-controls">
@@ -26,7 +29,7 @@
     <thead><tr><th></th><th>title</th><th>provider</th></tr></thead>
     <tbody>
     {{range .Tunes}}
-    <tr data-tune="{{.ID}}" data-yt="{{.YouTubeID}}">
+    <tr data-tune="{{.ID}}" data-yt="{{.YouTubeID}}" data-provider="{{.ProviderName}}" data-added="{{.AddedAt.Format "2006-01-02"}}">
         <td><button class="terminal-btn small play-this">▶</button></td>
         <td>{{.Title}}</td>
         <td>{{.ProviderName}}</td>

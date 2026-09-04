@@ -299,8 +299,8 @@ func TestCeremonyEndToEnd(t *testing.T) {
 	if len(drummerReveal.Pool) != 2 {
 		t.Fatalf("expected pool of 2, got %v", drummerReveal.Pool)
 	}
-	if drummerReveal.CountdownMs != 3000 || adminReveal.CountdownMs != 3000 {
-		t.Fatalf("expected 3000ms synced countdown, got %d / %d",
+	if drummerReveal.CountdownMs != 5000 || adminReveal.CountdownMs != 5000 {
+		t.Fatalf("expected 5000ms synced countdown, got %d / %d",
 			adminReveal.CountdownMs, drummerReveal.CountdownMs)
 	}
 
