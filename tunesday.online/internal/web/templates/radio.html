@@ -2,37 +2,31 @@
 <h2>The Radio Room</h2>
 
 <div id="radio-now" class="terminal-box">
-    <p id="radio-status">connecting to the broadcast…</p>
-    <p id="radio-track" class="muted">nothing queued up yet</p>
-    <div id="radio-player"></div>
-    <audio id="radio-audio" hidden></audio>
-    <canvas id="radio-eq" width="640" height="72" hidden></canvas>
-    <p id="radio-stream-note" class="muted" hidden></p>
-    <p>
-        <button id="join-btn" class="terminal-btn big" hidden>▶ JOIN — turn on my speakers</button>
-    </p>
+    <p id="radio-status">connecting…</p>
+    <p id="radio-track" class="muted">nothing playing</p>
+    <audio id="radio-audio" preload="none"></audio>
+    <div id="radio-progress"><div id="radio-progress-fill"></div></div>
     <p class="muted" id="radio-pos"></p>
 </div>
 
 <div class="radio-controls">
-    <button id="btn-play"  class="terminal-btn" disabled>▶ play</button>
-    <button id="btn-pause" class="terminal-btn" disabled>❚❚ pause</button>
-    <button id="btn-prev"  class="terminal-btn" disabled>⏮ prev</button>
-    <button id="btn-next"  class="terminal-btn" disabled>⏭ next</button>
-    <button id="btn-shuffle" class="terminal-btn">⇄ mode: ordered</button>
-    <button id="btn-stream" class="terminal-btn" title="Route audio through tunesday.online instead of YouTube's player">⚡ stream: off</button>
+    <button id="btn-play"  class="terminal-btn">▶ play</button>
+    <button id="btn-pause" class="terminal-btn" hidden>❚❚ pause</button>
+    <button id="btn-next"  class="terminal-btn">⏭ next</button>
+    <button id="btn-prev"  class="terminal-btn">⏮ prev</button>
+    <button id="btn-shuffle" class="terminal-btn">⇄ ordered</button>
 </div>
 
 <h3>Who's listening</h3>
 <ul id="radio-listeners" class="attendee-list"><li class="muted">nobody connected</li></ul>
 
-<h3>Playlist <span class="muted" id="queue-info"></span></h3>
+<h3>Playlist</h3>
 {{if .HasTunes}}
 <table class="terminal-table">
     <thead><tr><th></th><th>title</th><th>provider</th></tr></thead>
     <tbody>
     {{range .Tunes}}
-    <tr class="playlist-row" data-tune="{{.ID}}" data-yt="{{.YouTubeID}}">
+    <tr data-tune="{{.ID}}" data-yt="{{.YouTubeID}}">
         <td><button class="terminal-btn small play-this">▶</button></td>
         <td>{{.Title}}</td>
         <td>{{.ProviderName}}</td>

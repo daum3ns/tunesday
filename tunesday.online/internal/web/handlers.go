@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,10 +51,9 @@ type Deps struct {
 
 // Handler holds the web handlers and templates.
 type Handler struct {
-	tmpls      map[string]*template.Template
-	cfg        *config.Config
-	deps       Deps
-	streamGate *concurrencyGate
+	tmpls map[string]*template.Template
+	cfg   *config.Config
+	deps  Deps
 }
 
 // NewHandler creates a new web handler, parsing embedded templates.
@@ -73,7 +73,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		}
 		tmpls[page] = tmpl
 	}
-	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps, streamGate: newConcurrencyGate(4)}, nil
+	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps}, nil
 }
 
 // StaticFiles returns an http.Handler for embedded static assets.
@@ -312,18 +312,12 @@ func flash(data map[string]any, msg string) map[string]any {
 }
 
 func headerASCII() string {
-	return `██████████████████████████████████████████████████████████████████████████
-█▌                                                                      ▐█
-█▌                                                                      ▐█
-█▌                                                                      ▐█
-█▌     ░▀█▀░▀█▀░▀░█▀▀░░░░░░░░░                                          ▐█
-█▌     ░░█░░░█░░░░▀▀█░░░░░░░░░                                          ▐█
-█▌     ░▀▀▀░░▀░░░░▀▀▀░▀░░▀░░▀░                                          ▐█
-█▌     ░█░█░█▀█░█▀█░█▀█░█░█░░░▀█▀░█░█░█▀█░█▀▀░█▀▀░█▀▄░█▀█░█░█░░░█░█     ▐█
-█▌     ░█▀█░█▀█░█▀▀░█▀▀░░█░░░░░█░░█░█░█░█░█▀▀░▀▀█░█░█░█▀█░░█░░░░▀░▀     ▐█
-█▌     ░▀░▀░▀░▀░▀░░░▀░░░░▀░░░░░▀░░▀▀▀░▀░▀░▀▀▀░▀▀▀░▀▀░░▀░▀░░▀░░░░▀░▀     ▐█
-█▌                                                                      ▐█
-█▌                                                                      ▐█
-█▌                                                                      ▐█
-██████████████████████████████████████████████████████████████████████████`
+	return strings.Join([]string{
+		`████████╗██╗   ██╗███╗   ██╗███████╗███████╗██████╗  █████╗ ██╗   ██╗`,
+		`╚══██╔══╝██║   ██║████╗  ██║██╔════╝██╔════╝██╔══██╗██╔══██╗╚██╗ ██╔╝`,
+		`   ██║   ██║   ██║██╔██╗ ██║███████╗███████╗██║  ██║███████║ ╚████╔╝ `,
+		`   ██║   ██║   ██║██║╚██╗██║██╔════╝╚════██║██║  ██║██╔══██║  ╚██╔╝  `,
+		`   ██║   ╚██████╔╝██║ ╚████║███████║███████║██████╔╝██║  ██║   ██║   `,
+		`   ╚═╝    ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚══════╝╚═════╝ ╚═╝  ╚═╝   ╚═╝   `,
+	}, "\n")
 }

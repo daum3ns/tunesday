@@ -16,11 +16,23 @@ body {
     gap: 1rem;
 }
 
+#header-wrap {
+    text-align: center;
+}
+
 #header {
     font-size: clamp(3px, 0.9vw, 14px);
     line-height: 1.1;
     white-space: pre;
-    color: #fff;
+    color: #0f0;
+    display: inline-block;
+}
+
+.header-dot-online {
+    font-size: clamp(8px, 1.4vw, 18px);
+    letter-spacing: 2px;
+    margin-top: 0.3em;
+    color: #0f0;
 }
 
 main {
@@ -435,8 +447,9 @@ a {
 /* ---- Radio room ---- */
 
 #radio-now { margin-bottom: 0.75rem; }
-#radio-player { margin: 0.75rem 0; }
-#radio-player iframe { border: 1px solid #0f0; }
+
+#radio-progress { width: 100%; height: 4px; background: #333; margin: 0.5rem 0; }
+#radio-progress-fill { height: 100%; width: 0%; background: #0f0; transition: width 0.3s linear; }
 
 .radio-controls {
     display: flex;
@@ -519,17 +532,6 @@ a {
 
 #quiz-error { color: #f00; white-space: pre-wrap; }
 
-/* ---- direct stream mode + equalizer ---- */
-
-#radio-eq {
-    width: 100%;
-    height: 72px;
-    display: block;
-    border: 1px solid #040;
-    margin-top: 0.5rem;
-    background: #010;
-}
-
-#radio-stream-note { font-size: 0.9em; }
+/* ---- direct stream mode ---- */
 
 .terminal-btn.active { background: #0f0; color: #000; }

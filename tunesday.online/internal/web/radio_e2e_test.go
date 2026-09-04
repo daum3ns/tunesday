@@ -3,11 +3,11 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -17,23 +17,12 @@ import (
 	"tunesday/tunesday.online/internal/radio"
 )
 
-type radioState struct {
-	Status string `json:"status"`
-	Tune   *struct {
-		ID        int64  `json:"id"`
-		Title     string `json:"title"`
-		YouTubeID string `json:"youtubeId"`
-		Provider  string `json:"provider"`
-	} `json:"tune"`
-	StartedAt int64   `json:"startedAt"`
-	Elapsed   float64 `json:"elapsedSec"`
-	Mode      string  `json:"mode"`
-	Index     int     `json:"index"`
-	QueueLen  int     `json:"queueLen"`
-	Listeners []struct {
-		Alias string `json:"alias"`
-		IsYou bool   `json:"isYou"`
-	} `json:"listeners"`
+type listenerEntry struct {
+	Alias     string `json:"alias"`
+	Provider  string `json:"provider"`
+	TuneID    int64  `json:"tuneId"`
+	TuneTitle string `json:"tuneTitle"`
+	IsYou     bool   `json:"isYou"`
 }
 
 func createTeamWithFile(t *testing.T, u *testUser, server string, fields map[string]string, payload []byte) *http.Response {
@@ -60,7 +49,26 @@ func createTeamWithFile(t *testing.T, u *testUser, server string, fields map[str
 	return res
 }
 
-func readRadio(t *testing.T, conn *websocket.Conn) radioState {
+func teamTuneID(t *testing.T, h *Handler, slug, title string) int64 {
+	t.Helper()
+	team, err := h.deps.Teams.GetBySlug(slug)
+	if err != nil || team == nil {
+		t.Fatal("team not found: " + slug)
+	}
+	tunes, err := h.deps.Tunes.ListAllByTeam(team.ID)
+	if err != nil || len(tunes) == 0 {
+		t.Fatal("no tunes after import")
+	}
+	for _, tu := range tunes {
+		if tu.Title == title {
+			return tu.ID
+		}
+	}
+	t.Fatalf("tune %q not found", title)
+	return 0
+}
+
+func readListeners(t *testing.T, conn *websocket.Conn) []listenerEntry {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -70,13 +78,13 @@ func readRadio(t *testing.T, conn *websocket.Conn) radioState {
 			t.Fatalf("radio ws read: %v", err)
 		}
 		var m struct {
-			Type    string     `json:"type"`
-			Payload radioState `json:"payload"`
+			Type    string          `json:"type"`
+			Payload []listenerEntry `json:"payload"`
 		}
 		if err := json.Unmarshal(data, &m); err != nil {
 			t.Fatalf("radio ws json: %v", err)
 		}
-		if m.Type == "radio_state" {
+		if m.Type == "radio_listeners" {
 			return m.Payload
 		}
 	}
@@ -85,7 +93,7 @@ func readRadio(t *testing.T, conn *websocket.Conn) radioState {
 func TestRadioRoomEndToEnd(t *testing.T) {
 	h, database, mailer := setupTestHandler(t)
 	defer database.Close()
-	h.deps.Radio = radio.NewManagerWithEndedGuard(0) // no 10s sanity wait in tests
+	h.deps.Radio = radio.NewManager()
 
 	fm := newFakeMailer()
 	mailer.SendFunc = fm.capture()
@@ -125,7 +133,7 @@ func TestRadioRoomEndToEnd(t *testing.T) {
 		t.Fatal("stranger should not see the radio room")
 	}
 
-	// WS join: idle state with one listener.
+	// WS join: initial listener list with one entry, no tune playing.
 	conn, resp, err := websocket.DefaultDialer.Dial(wsBase+"/teams/radio-team/radio/ws", admin.cookieHeader(server))
 	if err != nil {
 		t.Fatalf("radio ws dial: %v", err)
@@ -133,71 +141,180 @@ func TestRadioRoomEndToEnd(t *testing.T) {
 	defer conn.Close()
 	resp.Body.Close()
 
-	st := readRadio(t, conn)
-	if st.Status != "idle" || st.QueueLen != 0 || len(st.Listeners) != 1 {
-		t.Fatalf("initial state: %+v", st)
+	listeners := readListeners(t, conn)
+	if len(listeners) != 1 {
+		t.Fatalf("expected 1 listener on join, got %d: %+v", len(listeners), listeners)
 	}
-	if st.Listeners[0].Alias == "" || !st.Listeners[0].IsYou {
-		t.Fatalf("listener identity: %+v", st.Listeners[0])
+	if listeners[0].Alias == "" || !listeners[0].IsYou {
+		t.Fatalf("listener identity: %+v", listeners[0])
+	}
+	if listeners[0].TuneID != 0 {
+		t.Fatalf("expected no tune on join, got tuneId %d", listeners[0].TuneID)
 	}
 
-	// Play -> first track live, one play stat.
-	res = admin.postForm(server, "/teams/radio-team/radio/play", url.Values{})
+	// Report now_playing via HTTP command endpoint.
+	tuneID := teamTuneID(t, h, "radio-team", "Alpha Song")
+	res = admin.postForm(server, "/teams/radio-team/radio/command", url.Values{"tune_id": {fmt.Sprintf("%d", tuneID)}})
 	res.Body.Close()
-	st = readRadio(t, conn)
-	if st.Status != "playing" || st.Tune == nil || st.Tune.Title != "Alpha Song" {
-		t.Fatalf("after play: %+v", st)
+	listeners = readListeners(t, conn)
+
+	if len(listeners) != 1 {
+		t.Fatalf("expected 1 listener after command, got %d", len(listeners))
 	}
-	if st.StartedAt == 0 || st.QueueLen != 2 {
-		t.Fatalf("broadcast must carry timing + queue size: %+v", st)
+	if listeners[0].TuneID != tuneID {
+		t.Fatalf("expected tuneId %d, got %d", tuneID, listeners[0].TuneID)
+	}
+	if listeners[0].TuneTitle != "Alpha Song" {
+		t.Fatalf("expected tune title 'Alpha Song', got %q", listeners[0].TuneTitle)
 	}
 
-	// Pause -> position frozen.
-	res = admin.postForm(server, "/teams/radio-team/radio/pause", url.Values{})
+	// Invite a second member (Drummer) via the members endpoint.
+	form := url.Values{}
+	form.Set("email", "drummer@example.com")
+	form.Set("provider_name", "Drummer")
+	res = admin.postForm(server, "/teams/radio-team/members", form)
 	res.Body.Close()
-	st = readRadio(t, conn)
-	if st.Status != "paused" || st.Tune == nil || st.Tune.Title != "Alpha Song" {
-		t.Fatalf("after pause: %+v", st)
+	inviteToken := fm.inviteTokenFor("drummer@example.com")
+	if inviteToken == "" {
+		t.Fatal("no invite captured")
 	}
 
-	// Next -> Beta Song playing.
-	res = admin.postForm(server, "/teams/radio-team/radio/next", url.Values{})
+	drummer := newTestUser(t, "drummer@example.com")
+	res = drummer.postForm(server, "/invite/"+inviteToken, url.Values{})
 	res.Body.Close()
-	st = readRadio(t, conn)
-	if st.Status != "playing" || st.Tune == nil || st.Tune.Title != "Beta Song" {
-		t.Fatalf("after next: %+v", st)
-	}
-	betaID := st.Tune.ID
 
-	// Ended with a stale id: no advance.
-	res = admin.postForm(server, "/teams/radio-team/radio/ended", url.Values{"tune_id": {"999"}})
+	// Drummer connects via WebSocket.
+	conn2, resp2, err := websocket.DefaultDialer.Dial(wsBase+"/teams/radio-team/radio/ws", drummer.cookieHeader(server))
+	if err != nil {
+		t.Fatalf("drummer ws dial: %v", err)
+	}
+	defer conn2.Close()
+	resp2.Body.Close()
+
+	// Drummer gets initial list with both users.
+	drummerListeners := readListeners(t, conn2)
+	if len(drummerListeners) != 2 {
+		t.Fatalf("drummer expected 2 listeners, got %d: %+v", len(drummerListeners), drummerListeners)
+	}
+
+	// Admin also gets an updated list (broadcast on drummer join).
+	adminListeners := readListeners(t, conn)
+	if len(adminListeners) != 2 {
+		t.Fatalf("admin expected 2 listeners after drummer joined, got %d", len(adminListeners))
+	}
+
+	// Drummer reports now_playing with a different tune.
+	drummer.postForm(server, "/teams/radio-team/radio/command", url.Values{"tune_id": {"2"}})
+
+	// Both see updated list.
+	adminListeners = readListeners(t, conn)
+	drummerListeners = readListeners(t, conn2)
+
+	foundDrummer := false
+	for _, l := range adminListeners {
+		if l.Alias != "" && l.TuneID == 2 {
+			foundDrummer = true
+		}
+	}
+	if !foundDrummer {
+		t.Fatalf("admin did not see drummer's tune: %+v", adminListeners)
+	}
+
+	foundAdmin := false
+	for _, l := range drummerListeners {
+		if l.TuneID == tuneID {
+			foundAdmin = true
+		}
+	}
+	if !foundAdmin {
+		t.Fatalf("drummer did not see admin's tune: %+v", drummerListeners)
+	}
+
+	// Drummer disconnects: admin sees one fewer listener.
+	conn2.Close()
+	time.Sleep(100 * time.Millisecond)
+	adminListeners = readListeners(t, conn)
+	if len(adminListeners) != 1 {
+		t.Fatalf("expected 1 listener after drummer left, got %d", len(adminListeners))
+	}
+}
+
+func TestRadioCommandRejectsUnknownTune(t *testing.T) {
+	h, database, mailer := setupTestHandler(t)
+	defer database.Close()
+	h.deps.Radio = radio.NewManager()
+
+	fm := newFakeMailer()
+	mailer.SendFunc = fm.capture()
+	ts := httptest.NewServer(h.Router())
+	defer ts.Close()
+	server := ts.URL
+
+	admin := registerAndVerify(t, server, fm, "cmd@example.com", "password123")
+	payload := []byte(`{
+      "participants": {"A": 1},
+      "tunes": [
+        {"name": "Song", "link": "https://youtu.be/aaaaaaaaaaa", "id": "aaaaaaaaaaa", "provider": "A", "added_at": "2026-01-01T10:00:00Z"}
+      ]
+    }`)
+	res := createTeamWithFile(t, admin, server, map[string]string{
+		"team_name": "Cmd Team", "your_name": "A",
+	}, payload)
 	res.Body.Close()
-	st = readRadio(t, conn)
-	if st.Tune == nil || st.Tune.Title != "Beta Song" {
-		t.Fatalf("stale ended must not advance: %+v", st)
-	}
 
-	// Ended with the live id: wraps back to Alpha Song (loop).
-	res = admin.postForm(server, "/teams/radio-team/radio/ended", url.Values{"tune_id": {strconv.FormatInt(betaID, 10)}})
+	// Unknown tune_id -> 404.
+	res = admin.postForm(server, "/teams/cmd-team/radio/command", url.Values{"tune_id": {"9999"}})
 	res.Body.Close()
-	st = readRadio(t, conn)
-	if st.Tune == nil || st.Tune.Title != "Alpha Song" {
-		t.Fatalf("valid ended must loop the queue: %+v", st)
+	if res.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown tune should 404, got %d", res.StatusCode)
 	}
+}
 
-	// Shuffle mode toggle.
-	res = admin.postForm(server, "/teams/radio-team/radio/mode", url.Values{"mode": {"shuffled"}})
+func TestRadioCommandClearsNowPlaying(t *testing.T) {
+	h, database, mailer := setupTestHandler(t)
+	defer database.Close()
+	h.deps.Radio = radio.NewManager()
+
+	fm := newFakeMailer()
+	mailer.SendFunc = fm.capture()
+	ts := httptest.NewServer(h.Router())
+	defer ts.Close()
+	server := ts.URL
+	wsBase := "ws" + strings.TrimPrefix(server, "http")
+
+	admin := registerAndVerify(t, server, fm, "clear@example.com", "password123")
+	payload := []byte(`{
+      "participants": {"A": 1},
+      "tunes": [
+        {"name": "Song", "link": "https://youtu.be/aaaaaaaaaaa", "id": "aaaaaaaaaaa", "provider": "A", "added_at": "2026-01-01T10:00:00Z"}
+      ]
+    }`)
+	res := createTeamWithFile(t, admin, server, map[string]string{
+		"team_name": "Clear Team", "your_name": "A",
+	}, payload)
 	res.Body.Close()
-	st = readRadio(t, conn)
-	if st.Mode != "shuffled" {
-		t.Fatalf("mode not broadcast: %+v", st)
+
+	conn, resp, err := websocket.DefaultDialer.Dial(wsBase+"/teams/clear-team/radio/ws", admin.cookieHeader(server))
+	if err != nil {
+		t.Fatalf("ws dial: %v", err)
+	}
+	defer conn.Close()
+	resp.Body.Close()
+	readListeners(t, conn) // initial join message
+
+	// Set now_playing.
+	res = admin.postForm(server, "/teams/clear-team/radio/command", url.Values{"tune_id": {"1"}})
+	res.Body.Close()
+	listeners := readListeners(t, conn)
+	if listeners[0].TuneID != 1 {
+		t.Fatalf("expected tuneId 1, got %d", listeners[0].TuneID)
 	}
 
-	// Play stats recorded: Alpha started twice, Beta once.
-	if n, _ := h.deps.PlayStats.CountByTune(1); n != 2 {
-		t.Fatalf("expected 2 plays of tune 1, got %d", n)
-	}
-	if n, _ := h.deps.PlayStats.CountByTune(betaID); n != 1 {
-		t.Fatalf("expected 1 play of tune %d, got %d", betaID, n)
+	// Clear now_playing with tune_id=0.
+	res = admin.postForm(server, "/teams/clear-team/radio/command", url.Values{"tune_id": {"0"}})
+	res.Body.Close()
+	listeners = readListeners(t, conn)
+	if listeners[0].TuneID != 0 {
+		t.Fatalf("expected tuneId 0 after clear, got %d", listeners[0].TuneID)
 	}
 }

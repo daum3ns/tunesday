@@ -1,6 +1,8 @@
 package web
 
 import (
+	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,30 +11,16 @@ import (
 
 	"tunesday/tunesday.online/internal/auth"
 	"tunesday/tunesday.online/internal/live"
-	"tunesday/tunesday.online/internal/radio"
 	"tunesday/tunesday.online/internal/store"
 )
 
-const radioIdleTune = int64(0)
-
-// radioTuneInfo is the play-info sent to clients.
-type radioTuneInfo struct {
-	ID        int64  `json:"id"`
-	Title     string `json:"title"`
-	YouTubeID string `json:"youtubeId"`
+// listenerInfo is one entry in the "who's listening" broadcast.
+type listenerInfo struct {
+	Alias     string `json:"alias"`
 	Provider  string `json:"provider"`
-}
-
-// radioStatePayload is the full sync frame: clients render *exactly* this.
-type radioStatePayload struct {
-	Status    string         `json:"status"` // idle | playing | paused
-	Tune      *radioTuneInfo `json:"tune,omitempty"`
-	StartedAt int64          `json:"startedAt,omitempty"` // server epoch ms
-	Elapsed   float64        `json:"elapsedSec,omitempty"`
-	Mode      string         `json:"mode"`
-	Index     int            `json:"index"`
-	QueueLen  int            `json:"queueLen"`
-	Listeners []attendeeInfo `json:"listeners"`
+	TuneID    int64  `json:"tuneId"`
+	TuneTitle string `json:"tuneTitle"`
+	IsYou     bool   `json:"isYou"`
 }
 
 // RadioPage renders the listening room.
@@ -53,12 +41,13 @@ func (h *Handler) RadioPage(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "radio.html", data)
 }
 
-// radioHub gives each team's radio room a dedicated hub slot.
+// radioHub gives each team's radio room a dedicated WebSocket hub slot.
 func (h *Handler) radioHub(teamID string) *live.Room {
 	return h.deps.Rooms.RoomFor("radio:" + teamID)
 }
 
-// RadioWS is the live wire for the listening room.
+// RadioWS is the live wire for the listening room. Clients send
+// "now_playing" messages; the server broadcasts the listener list.
 func (h *Handler) RadioWS(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil {
@@ -77,182 +66,131 @@ func (h *Handler) RadioWS(w http.ResponseWriter, r *http.Request) {
 	room := h.deps.Radio.For(team.ID)
 	hub := h.radioHub(team.ID)
 
-	room.AliasFor(user.ID) // stable alias for this session
+	room.AliasFor(user.ID)
 	client := hub.Join(conn, user.ID)
 	defer func() {
 		hub.Leave(client)
 		client.CloseConnection()
-		h.broadcastRadio(team.ID)
+		h.broadcastListeners(team.ID)
 	}()
 
-	// Personal snapshot first (carries isYou); everyone else gets the
-	// room-visible join notification. Exactly one frame per client.
-	h.sendRadioState(conn, team.ID, user.ID)
-	hub.BroadcastExcept(client, "radio_state", h.radioPayload(team.ID, ""))
+	h.sendListeners(conn, team.ID, user.ID)
+	h.broadcastListenersExcept(client, team.ID)
 
-	conn.SetReadLimit(128)
+	conn.SetReadLimit(256)
 	_ = conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
 	conn.SetPongHandler(func(string) error {
 		return conn.SetReadDeadline(time.Now().Add(30 * time.Minute))
 	})
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, raw, err := conn.ReadMessage()
+		if err != nil {
 			break
+		}
+		var msg struct {
+			Type   string `json:"type"`
+			TuneID int64  `json:"tune_id"`
+		}
+		if json.Unmarshal(raw, &msg) != nil {
+			continue
+		}
+		switch msg.Type {
+		case "now_playing":
+			room.SetNowPlaying(user.ID, msg.TuneID)
+			h.broadcastListeners(team.ID)
+		default:
+			log.Printf("radio ws: unknown message type %q", msg.Type)
 		}
 	}
 }
 
-// sendRadioState delivers the full snapshot to one freshly joined client.
-func (h *Handler) sendRadioState(conn *websocket.Conn, teamID, viewerID string) {
-	p := h.radioPayload(teamID, viewerID)
-	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	_ = conn.WriteJSON(live.Message{Type: "radio_state", Payload: p})
+// RadioCommand handles the single command endpoint for now_playing reports
+// over HTTP (fallback for clients that prefer POST over WebSocket).
+func (h *Handler) RadioCommand(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	team, _, ok := h.requireMember(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+
+	tuneID, _ := strconv.ParseInt(r.FormValue("tune_id"), 10, 64)
+
+	room := h.deps.Radio.For(team.ID)
+	if tuneID > 0 {
+		tune, err := h.deps.Tunes.GetByID(tuneID)
+		if err != nil || tune == nil || tune.TeamID != team.ID {
+			http.Error(w, "tune not found", http.StatusNotFound)
+			return
+		}
+		room.SetNowPlaying(user.ID, tuneID)
+		_ = h.deps.PlayStats.Record(&store.PlayStat{
+			TeamID: team.ID,
+			TuneID: tuneID,
+			UserID: user.ID,
+		})
+	} else {
+		room.SetNowPlaying(user.ID, 0)
+	}
+
+	h.broadcastListeners(team.ID)
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write([]byte(`{"ok":true}`))
 }
 
-// broadcastRadio pushes the current state to everyone in the room.
-func (h *Handler) broadcastRadio(teamID string) {
+func (h *Handler) broadcastListeners(teamID string) {
 	hub := h.radioHub(teamID)
 	if hub.Count() == 0 {
 		return
 	}
-	hub.Broadcast("radio_state", h.radioPayload(teamID, ""))
+	listeners := h.buildListenerList(teamID, "")
+	hub.Broadcast("radio_listeners", listeners)
 }
 
-// radioPayload assembles the sync frame from server state.
-func (h *Handler) radioPayload(teamID, viewerID string) radioStatePayload {
+func (h *Handler) broadcastListenersExcept(skip *live.Client, teamID string) {
+	hub := h.radioHub(teamID)
+	listeners := h.buildListenerList(teamID, "")
+	hub.BroadcastExcept(skip, "radio_listeners", listeners)
+}
+
+func (h *Handler) sendListeners(conn *websocket.Conn, teamID, viewerID string) {
+	listeners := h.buildListenerList(teamID, viewerID)
+	_ = conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.WriteJSON(live.Message{Type: "radio_listeners", Payload: listeners})
+}
+
+func (h *Handler) buildListenerList(teamID, viewerID string) []listenerInfo {
 	room := h.deps.Radio.For(teamID)
-	st := room.Snapshot()
-
-	p := radioStatePayload{
-		Status:   "idle",
-		Mode:     st.Mode,
-		Index:    st.Index,
-		QueueLen: len(st.Queue),
-	}
-	if !st.Idle() {
-		if tune, err := h.deps.Tunes.GetByID(st.TuneID()); err == nil && tune != nil {
-			p.Status = "playing"
-			if st.Paused {
-				p.Status = "paused"
-				p.Elapsed = st.PausedAt.Sub(st.StartedAt).Seconds()
-			} else {
-				p.Elapsed = time.Since(st.StartedAt).Seconds()
-				p.StartedAt = st.StartedAt.UnixMilli()
-			}
-			p.Tune = &radioTuneInfo{
-				ID:        tune.ID,
-				Title:     tune.Title,
-				YouTubeID: tune.YouTubeID,
-				Provider:  tune.ProviderName,
-			}
-		}
-	}
-
 	hub := h.radioHub(teamID)
 	members, _ := h.deps.Members.ListByTeam(teamID)
 	providerByUser := map[string]string{}
 	for _, m := range members {
 		providerByUser[m.UserID] = m.ProviderName
 	}
+	np := room.NowPlayingSnapshot()
+
+	var list []listenerInfo
 	for _, uid := range hub.Participants() {
-		p.Listeners = append(p.Listeners, attendeeInfo{
-			Alias:        room.AliasFor(uid),
-			ProviderName: providerByUser[uid],
-			IsYou:        uid == viewerID,
-			Live:         true,
-		})
+		tuneID := np[uid]
+		info := listenerInfo{
+			Alias:    room.AliasFor(uid),
+			Provider: providerByUser[uid],
+			TuneID:   tuneID,
+			IsYou:    uid == viewerID,
+		}
+		if tuneID > 0 {
+			if t, err := h.deps.Tunes.GetByID(tuneID); err == nil && t != nil {
+				info.TuneTitle = t.Title
+			}
+		}
+		list = append(list, info)
 	}
-	return p
-}
-
-// radioControl is the shared flow for every POST endpoint: resolve member,
-// fetch the fresh catalogue, apply the command, log starts, broadcast.
-func (h *Handler) radioControl(apply func(*Handler, *radio.Room, []int64, *http.Request, string) radio.State) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		user := auth.UserFromContext(r.Context())
-		team, _, ok := h.requireMember(w, r)
-		if !ok {
-			return
-		}
-		if err := r.ParseForm(); err != nil {
-			http.Error(w, "invalid form", http.StatusBadRequest)
-			return
-		}
-
-		tunes, err := h.deps.Tunes.ListAllByTeam(team.ID)
-		if err != nil {
-			http.Error(w, "catalogue unavailable", http.StatusInternalServerError)
-			return
-		}
-		ids := make([]int64, 0, len(tunes))
-		for _, t := range tunes {
-			ids = append(ids, t.ID)
-		}
-
-		room := h.deps.Radio.For(team.ID)
-		before := room.Snapshot()
-		after := apply(h, room, ids, r, user.ID)
-
-		if before.TuneID() != after.TuneID() && after.TuneID() != radioIdleTune {
-			_ = h.deps.PlayStats.Record(&store.PlayStat{
-				TeamID:    team.ID,
-				TuneID:    after.TuneID(),
-				UserID:    user.ID,
-				SessionID: room.SessionID(),
-			})
-		}
-
-		h.broadcastRadio(team.ID)
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	}
-}
-
-func formTuneID(r *http.Request) int64 {
-	id, _ := strconv.ParseInt(r.FormValue("tune_id"), 10, 64)
-	return id
-}
-
-// Command implementations (DJ-anarchy: any member may use all of them).
-
-func radioPlay(h *Handler, room *radio.Room, ids []int64, r *http.Request, actor string) radio.State {
-	tuneID := formTuneID(r)
-	if tuneID != 0 && !containsTune(ids, tuneID) {
-		return room.Snapshot() // unknown/deleted tune: no-op
-	}
-	return room.Play(ids, tuneID)
-}
-
-func radioPause(h *Handler, room *radio.Room, ids []int64, r *http.Request, actor string) radio.State {
-	return room.Pause()
-}
-
-func radioNext(h *Handler, room *radio.Room, ids []int64, r *http.Request, actor string) radio.State {
-	return room.Next(ids)
-}
-
-func radioPrev(h *Handler, room *radio.Room, ids []int64, r *http.Request, actor string) radio.State {
-	return room.Prev(ids)
-}
-
-func radioEnded(h *Handler, room *radio.Room, ids []int64, r *http.Request, actor string) radio.State {
-	return room.Ended(ids, formTuneID(r), time.Now())
-}
-
-func radioMode(h *Handler, room *radio.Room, ids []int64, r *http.Request, actor string) radio.State {
-	mode := r.FormValue("mode")
-	if mode != radio.ModeOrdered && mode != radio.ModeShuffled {
-		return room.Snapshot()
-	}
-	return room.SetMode(mode)
-}
-
-// containsTune reports whether the catalogue includes the tune.
-func containsTune(ids []int64, v int64) bool {
-	for _, id := range ids {
-		if id == v {
-			return true
-		}
-	}
-	return false
+	return list
 }

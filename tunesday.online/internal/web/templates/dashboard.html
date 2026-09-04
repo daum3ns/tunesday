@@ -9,7 +9,7 @@
 
 <h3>The Ceremony</h3>
 {{if ge .EligibleCount 2}}
-<p>Two to four records keep spinning. One needle drops. Only the Algorithm decides.</p>
+<p>Everyone in the room is in play — except whoever provided the last tune. One needle drops. Only the Algorithm decides.</p>
 {{if eq .Member.Role "admin"}}
 <form method="POST" action="/teams/{{.Team.Slug}}/ceremonies">
     <button type="submit" class="terminal-btn big">▶ Start the Tunesday Roulette</button>

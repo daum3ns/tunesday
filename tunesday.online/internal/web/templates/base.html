@@ -7,7 +7,10 @@
     <link rel="stylesheet" href="/static/css/terminal.css">
 </head>
 <body>
-    <pre id="header">{{.Header}}</pre>
+    <div id="header-wrap">
+        <pre id="header">{{.Header}}</pre>
+        <p class="header-dot-online">.online</p>
+    </div>
     <nav class="terminal-nav">
         <a href="/" class="terminal-btn">home</a>
         {{if .CurrentUser}}

@@ -67,12 +67,7 @@ func (h *Handler) Router() http.Handler {
 		r.Get("/teams/{slug}/radio", h.RadioPage)
 		r.Get("/teams/{slug}/radio/ws", h.RadioWS)
 		r.Get("/teams/{slug}/radio/stream", h.RadioStream)
-		r.Post("/teams/{slug}/radio/play", h.radioControl(radioPlay))
-		r.Post("/teams/{slug}/radio/pause", h.radioControl(radioPause))
-		r.Post("/teams/{slug}/radio/next", h.radioControl(radioNext))
-		r.Post("/teams/{slug}/radio/prev", h.radioControl(radioPrev))
-		r.Post("/teams/{slug}/radio/ended", h.radioControl(radioEnded))
-		r.Post("/teams/{slug}/radio/mode", h.radioControl(radioMode))
+		r.Post("/teams/{slug}/radio/command", h.RadioCommand)
 
 		// Data: export and destructive replace (admin-only inside handlers)
 		r.Get("/teams/{slug}/export", h.ExportTeam)
