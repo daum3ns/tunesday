@@ -59,6 +59,11 @@ func (h *Handler) requireMember(w http.ResponseWriter, r *http.Request) (*store.
 		return nil, nil, false
 	}
 	if member == nil {
+		if user.MasterAdmin {
+			// Master admin gets a synthetic admin membership so downstream code works.
+			member = &store.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "admin"}
+			return team, member, true
+		}
 		h.render(w, r, "message.html", map[string]any{
 			"Title":    "Not a member",
 			"Message":  "You are not a member of this team.",
@@ -76,11 +81,14 @@ func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (*store.T
 		return nil, nil, false
 	}
 	if member.Role != "admin" {
-		h.render(w, r, "message.html", map[string]any{
-			"Title":   "Admins only",
-			"Message": "You need team admin rights for this action.",
-		})
-		return nil, nil, false
+		user := auth.UserFromContext(r.Context())
+		if user == nil || !user.MasterAdmin {
+			h.render(w, r, "message.html", map[string]any{
+				"Title":   "Admins only",
+				"Message": "You need team admin rights for this action.",
+			})
+			return nil, nil, false
+		}
 	}
 	return team, member, true
 }

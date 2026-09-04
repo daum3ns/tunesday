@@ -27,6 +27,23 @@ func main() {
 	}
 	defer database.Close()
 
+	// Bootstrap master admin from env var.
+	if cfg.MasterAdminEmail != "" {
+		users := store.NewUserStore(database)
+		user, err := users.GetByEmail(cfg.MasterAdminEmail)
+		if err != nil {
+			log.Printf("tunesday.online: WARNING master admin lookup failed: %v", err)
+		} else if user == nil {
+			log.Printf("tunesday.online: WARNING TUNESDAY_MASTER_ADMIN_EMAIL=%s: user not found", cfg.MasterAdminEmail)
+		} else if !user.MasterAdmin {
+			if err := users.SetMasterAdmin(user.ID, true); err != nil {
+				log.Printf("tunesday.online: WARNING failed to set master admin: %v", err)
+			} else {
+				log.Printf("tunesday.online: master admin set to %s", cfg.MasterAdminEmail)
+			}
+		}
+	}
+
 	// One yt-dlp extractor serves both the stream resolver and title
 	// fetching — the proven path the CLI's mpv radio uses.
 	extractor := stream.NewYTDLP()

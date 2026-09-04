@@ -14,6 +14,7 @@
     <nav class="terminal-nav">
         <a href="/" class="terminal-btn">home</a>
         {{if .CurrentUser}}
+        {{if .CurrentUser.MasterAdmin}}<a href="/admin/teams" class="terminal-btn master-admin-badge">all teams</a>{{end}}
         <a href="/onboarding" class="terminal-btn">my teams</a>
         <form method="POST" action="/logout" class="inline-form">
             <button type="submit" class="terminal-btn">log out</button>

@@ -14,6 +14,7 @@ type User struct {
 	Email         string
 	PasswordHash  string
 	EmailVerified bool
+	MasterAdmin   bool
 	CreatedAt     time.Time
 }
 
@@ -43,19 +44,20 @@ func (s *UserStore) Create(user *User) error {
 
 // GetByEmail returns a user by email.
 func (s *UserStore) GetByEmail(email string) (*User, error) {
-	return s.get(`SELECT id, email, password_hash, email_verified, created_at FROM users WHERE email = ?`, email)
+	return s.get(`SELECT id, email, password_hash, email_verified, master_admin, created_at FROM users WHERE email = ?`, email)
 }
 
 // GetByID returns a user by ID.
 func (s *UserStore) GetByID(id string) (*User, error) {
-	return s.get(`SELECT id, email, password_hash, email_verified, created_at FROM users WHERE id = ?`, id)
+	return s.get(`SELECT id, email, password_hash, email_verified, master_admin, created_at FROM users WHERE id = ?`, id)
 }
 
 func (s *UserStore) get(query string, arg string) (*User, error) {
 	var user User
 	var verified int
+	var masterAdmin int
 	var createdAt sql.NullString
-	err := s.db.QueryRow(query, arg).Scan(&user.ID, &user.Email, &user.PasswordHash, &verified, &createdAt)
+	err := s.db.QueryRow(query, arg).Scan(&user.ID, &user.Email, &user.PasswordHash, &verified, &masterAdmin, &createdAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -63,6 +65,7 @@ func (s *UserStore) get(query string, arg string) (*User, error) {
 		return nil, err
 	}
 	user.EmailVerified = verified == 1
+	user.MasterAdmin = masterAdmin == 1
 	if createdAt.Valid {
 		user.CreatedAt = parseTime(createdAt.String)
 	}
@@ -109,4 +112,14 @@ func (s *UserStore) Exists(email string) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// SetMasterAdmin grants or revokes master admin status for a user.
+func (s *UserStore) SetMasterAdmin(id string, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	_, err := s.db.Exec(`UPDATE users SET master_admin = ? WHERE id = ?`, v, id)
+	return err
 }

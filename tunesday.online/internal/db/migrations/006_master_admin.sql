@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN master_admin INTEGER DEFAULT 0;

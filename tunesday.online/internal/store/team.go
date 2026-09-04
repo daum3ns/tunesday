@@ -96,6 +96,29 @@ func (s *TeamStore) ListByUser(userID string) ([]*Team, error) {
 	return teams, rows.Err()
 }
 
+// ListAll returns every team, ordered by creation date (newest first).
+func (s *TeamStore) ListAll() ([]*Team, error) {
+	rows, err := s.db.Query(`SELECT id, name, slug, admin_id, created_at FROM teams ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var teams []*Team
+	for rows.Next() {
+		var t Team
+		var createdAt sql.NullString
+		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.AdminID, &createdAt); err != nil {
+			return nil, err
+		}
+		if createdAt.Valid {
+			t.CreatedAt = parseTime(createdAt.String)
+		}
+		teams = append(teams, &t)
+	}
+	return teams, rows.Err()
+}
+
 // SlugExists reports whether a slug is already taken.
 func (s *TeamStore) SlugExists(slug string) (bool, error) {
 	var count int

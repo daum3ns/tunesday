@@ -23,6 +23,8 @@ type Config struct {
 	SMTPUser string
 	SMTPPass string
 	SMTPFrom string
+
+	MasterAdminEmail string
 }
 
 // Load reads configuration from environment variables.
@@ -39,6 +41,7 @@ func Load() (*Config, error) {
 		SMTPUser:        os.Getenv("TUNESDAY_ONLINE_SMTP_USER"),
 		SMTPPass:        os.Getenv("TUNESDAY_ONLINE_SMTP_PASS"),
 		SMTPFrom:        getEnv("TUNESDAY_ONLINE_SMTP_FROM", "noreply@tunesday.online"),
+		MasterAdminEmail: os.Getenv("TUNESDAY_MASTER_ADMIN_EMAIL"),
 	}
 
 	if cfg.BaseURL == "" {

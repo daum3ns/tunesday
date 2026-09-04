@@ -47,6 +47,9 @@ func (h *Handler) Router() http.Handler {
 		r.Get("/teams/new", h.NewTeamForm)
 		r.Post("/teams", h.CreateTeam)
 
+		// Master admin
+		r.Get("/admin/teams", h.AdminTeamsPage)
+
 		r.Get("/teams/{slug}/dashboard", h.Dashboard)
 		r.Get("/teams/{slug}/providers", h.ProvidersPage)
 		r.Get("/teams/{slug}/members", h.MembersPage)

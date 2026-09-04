@@ -558,6 +558,12 @@ a {
 
 #quiz-error { color: #f00; white-space: pre-wrap; }
 
+.master-admin-badge {
+    border-color: #ff0;
+    color: #ff0;
+    font-size: clamp(9px, 1.2vw, 11px);
+}
+
 .terminal-footer {
     width: 100%;
     text-align: center;

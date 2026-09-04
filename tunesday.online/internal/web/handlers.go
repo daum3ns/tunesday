@@ -63,7 +63,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		"verify.html", "message.html", "onboarding.html", "team_new.html",
 		"dashboard.html", "providers.html", "members.html", "invite_accept.html",
 		"ceremony.html", "import.html", "import_confirm.html", "login_link.html",
-		"radio.html", "quiz.html", "stats.html",
+		"radio.html", "quiz.html", "stats.html", "admin_teams.html",
 	}
 	tmpls := make(map[string]*template.Template)
 	funcMap := template.FuncMap{"add1": func(i int) int { return i + 1 }}
@@ -129,6 +129,24 @@ func redirectFlash(w http.ResponseWriter, r *http.Request, to, key, msg string) 
 func (h *Handler) Landing(w http.ResponseWriter, r *http.Request) {
 	h.render(w, r, "landing.html", map[string]any{
 		"Title": "tunesday.online",
+	})
+}
+
+// AdminTeamsPage lists all teams for the master admin.
+func (h *Handler) AdminTeamsPage(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	if user == nil || !user.MasterAdmin {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	teams, err := h.deps.Teams.ListAll()
+	if err != nil {
+		h.render(w, r, "message.html", map[string]any{"Title": "Error", "Message": "Could not load teams."})
+		return
+	}
+	h.render(w, r, "admin_teams.html", map[string]any{
+		"Title": "All Teams",
+		"Teams": teams,
 	})
 }
 

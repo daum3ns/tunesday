@@ -251,6 +251,10 @@ func (h *Handler) isCeremonyHost(cer *store.Ceremony, userID string) bool {
 }
 
 func (h *Handler) isTeamAdmin(teamID, userID string) bool {
+	user, _ := h.deps.Users.GetByID(userID)
+	if user != nil && user.MasterAdmin {
+		return true
+	}
 	member, _ := h.deps.Members.Get(teamID, userID)
 	return member != nil && member.Role == "admin"
 }
