@@ -461,6 +461,19 @@ a {
     margin-bottom: 1rem;
 }
 
+.vol-row {
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.vol-row input[type=range] {
+    flex: 1;
+    max-width: 180px;
+    accent-color: #0f0;
+    cursor: pointer;
+}
+
 .playlist-row.current td { color: #fff; }
 
 /* ---- Team stats ---- */

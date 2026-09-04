@@ -18,6 +18,9 @@
     var btnNext   = document.getElementById("btn-next");
     var btnPrev   = document.getElementById("btn-prev");
     var btnShuffle = document.getElementById("btn-shuffle");
+    var volSlider = document.getElementById("radio-volume");
+    var volLabel  = document.getElementById("radio-vol-label");
+    var volIcon   = document.getElementById("radio-vol-icon");
 
     // Collect tunes from the playlist table in the DOM.
     var tunes = [];
@@ -32,6 +35,8 @@
     var queueIndex = 0;
     var currentMode = "ordered";
     var currentTuneId = 0;
+    var loadedTuneId = 0;
+    var isLoading = false;
     var ws = null;
     var posTimer = null;
 
@@ -90,9 +95,34 @@
 
     // ── Audio ──
 
+    function setVolume(pct) {
+        if (pct < 0) pct = 0;
+        if (pct > 100) pct = 100;
+        audioEl.volume = pct / 100;
+        if (volLabel) volLabel.textContent = pct + "%";
+        if (volSlider && volSlider.value !== String(pct)) volSlider.value = pct;
+        if (volIcon) {
+            if (pct === 0) volIcon.textContent = "🔇";
+            else if (pct < 50) volIcon.textContent = "🔉";
+            else volIcon.textContent = "🔊";
+        }
+    }
+
+    function initVolume() {
+        var saved = null;
+        try { saved = parseInt(localStorage.getItem("radioVolume"), 10); } catch (e) {}
+        if (volSlider && saved !== null && !isNaN(saved)) {
+            setVolume(saved);
+        } else if (volSlider) {
+            setVolume(parseInt(volSlider.value, 10));
+        }
+    }
+
     function loadAndPlay(tuneId) {
         if (!tuneId) return;
         currentTuneId = tuneId;
+        loadedTuneId = 0;
+        isLoading = true;
         resetProgress();
         statusEl.textContent = "loading…";
         var meta = tuneMeta(tuneId);
@@ -106,8 +136,10 @@
                 return res.json();
             })
             .then(function (data) {
-                if (currentTuneId !== tuneId) return;
+                if (currentTuneId !== tuneId) { isLoading = false; return; }
                 audioEl.src = data.url;
+                loadedTuneId = tuneId;
+                isLoading = false;
                 audioEl.load();
                 audioEl.play().then(function () {
                     statusEl.textContent = "▶ live";
@@ -118,6 +150,7 @@
                 });
             })
             .catch(function () {
+                isLoading = false;
                 statusEl.textContent = "⚠ stream unavailable";
             });
     }
@@ -231,7 +264,8 @@
     // ── Transport controls ──
 
     btnPlay.addEventListener("click", function () {
-        if (currentTuneId && audioEl.src) {
+        if (isLoading) return;
+        if (currentTuneId && loadedTuneId === currentTuneId && audioEl.src) {
             audioEl.play().then(function () {
                 statusEl.textContent = "▶ live";
                 blinkPausedOff();
@@ -287,8 +321,18 @@
         }
     });
 
+    // ── Volume ──
+
+    if (volSlider) {
+        volSlider.addEventListener("input", function () {
+            setVolume(parseInt(this.value, 10));
+            try { localStorage.setItem("radioVolume", String(this.value)); } catch (e) {}
+        });
+    }
+
     // ── Init ──
 
     if (tunes.length > 0) buildQueue(false);
+    initVolume();
     connect();
 })();
