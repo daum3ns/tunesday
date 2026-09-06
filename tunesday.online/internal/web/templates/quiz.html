@@ -70,5 +70,6 @@
 {{end}}
 
 <script id="quiz-data" type="application/json">{{.QuizData}}</script>
-<script src="/static/js/quiz.js" data-result="/teams/{{.Team.Slug}}/quiz/result"></script>
+<script src="/static/js/players.js"></script>
+<script src="/static/js/quiz.js" data-result="/teams/{{.Team.Slug}}/quiz/result" data-radio="/teams/{{.Team.Slug}}/radio"></script>
 {{end}}

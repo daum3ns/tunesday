@@ -3,11 +3,12 @@
 
     var SNIPPET_DURATION = 10;
     var COUNTDOWN_STEPS = 20;
-    var FEEDBACK_DELAY = 3500;  // increased from 2000
+    var FEEDBACK_DELAY = 3500;
     var MIN_VIDEO_DURATION = 25;
 
     var script = document.currentScript;
     var resultPath = script.getAttribute("data-result");
+    var radioPath = script.getAttribute("data-radio");
     var dataEl = document.getElementById("quiz-data");
     if (!dataEl) return;
     var DATA = JSON.parse(dataEl.textContent || "{}");
@@ -30,13 +31,13 @@
     var elAudio = $("quiz-audio");
 
     var ytPlayer = null;
-    var onVideoReady = null;
-    var onLoadError = null;
-    var loadTimeout = null;
     var roundTimedOut = false;
     var engine = null;
     var currentPlayer = null;
     var selectedMode = null;
+    var playerState = "idle";
+    var playerQueue = [];
+    var playerWatchdog = null;
 
     function hideEl(el) { el.hidden = true; }
     function showEl(el) { el.hidden = false; }
@@ -57,132 +58,6 @@
         showEl(elError);
         elError.textContent = msg;
     }
-
-    /* ── Audio Player ── */
-
-    function AudioPlayer(basePath) {
-        this.basePath = basePath;
-        this.loadTimeout = null;
-    }
-
-    AudioPlayer.prototype.setup = function (cb) {
-        if (cb) cb();
-    };
-
-    AudioPlayer.prototype.loadAndPlay = function (tuneId, cb) {
-        var self = this;
-        var settled = false;
-
-        if (self.loadTimeout) clearTimeout(self.loadTimeout);
-        self.loadTimeout = setTimeout(function () {
-            if (!settled) {
-                settled = true;
-                self.loadTimeout = null;
-                cb(new Error("Audio load timed out"));
-            }
-        }, 15000);
-
-        fetch(self.basePath + "/stream?tune_id=" + tuneId)
-            .then(function (res) {
-                if (!res.ok) throw new Error("stream " + res.status);
-                return res.json();
-            })
-            .then(function (data) {
-                if (settled) return;
-                settled = true;
-                if (self.loadTimeout) { clearTimeout(self.loadTimeout); self.loadTimeout = null; }
-                
-                elAudio.src = data.url;
-                elAudio.load();
-                elAudio.play().catch(function () {
-                    // Autoplay blocked by browser, silent fail (user will see it's not playing)
-                });
-                cb();
-            })
-            .catch(function (err) {
-                if (!settled) {
-                    settled = true;
-                    if (self.loadTimeout) { clearTimeout(self.loadTimeout); self.loadTimeout = null; }
-                    cb(new Error("Audio unavailable"));
-                }
-            });
-    };
-
-    AudioPlayer.prototype.pause = function () {
-        if (elAudio) elAudio.pause();
-    };
-
-    /* ── YouTube Player ── */
-
-    function YoutubePlayer() {
-        this.loadTimeout = null;
-    }
-
-    YoutubePlayer.prototype.setup = function (cb) {
-        showEl(elPlayerW);
-        ytPlayer = new YT.Player("player", {
-            height: "180",
-            width: "100%",
-            playerVars: { autoplay: 1, controls: 0, enablejsapi: 1, modestbranding: 1, rel: 0 },
-            events: {
-                onReady: function () { if (cb) cb(); },
-                onStateChange: function (ev) {
-                    if (ev.data === YT.PlayerState.PLAYING && onVideoReady) {
-                        onVideoReady();
-                        onVideoReady = null;
-                    }
-                },
-                onError: function () {
-                    if (onLoadError) {
-                        var fail = onLoadError;
-                        onLoadError = null;
-                        onVideoReady = null;
-                        if (this.loadTimeout) { clearTimeout(this.loadTimeout); this.loadTimeout = null; }
-                        fail(new Error("Video unavailable"));
-                    }
-                }
-            }
-        });
-    };
-
-    YoutubePlayer.prototype.loadAndPlay = function (videoId, cb) {
-        var self = this;
-        var settled = false;
-        onLoadError = cb;
-        
-        if (self.loadTimeout) clearTimeout(self.loadTimeout);
-        self.loadTimeout = setTimeout(function () {
-            if (!settled && onLoadError) {
-                settled = true;
-                onVideoReady = null;
-                onLoadError = null;
-                self.loadTimeout = null;
-                cb(new Error("Video load timed out"));
-            }
-        }, 15000);
-
-        onVideoReady = function () {
-            if (settled) return;
-            settled = true;
-            if (self.loadTimeout) { clearTimeout(self.loadTimeout); self.loadTimeout = null; }
-            onVideoReady = null;
-            onLoadError = null;
-            var dur = ytPlayer.getDuration();
-            if (dur < MIN_VIDEO_DURATION) {
-                ytPlayer.stopVideo();
-                cb(new Error("Video too short"));
-                return;
-            }
-            var start = Math.floor(dur * (0.10 + Math.random() * 0.70));
-            ytPlayer.seekTo(start);
-            cb();
-        };
-        ytPlayer.loadVideoById(videoId);
-    };
-
-    YoutubePlayer.prototype.pause = function () {
-        if (ytPlayer && typeof ytPlayer.pauseVideo === "function") ytPlayer.pauseVideo();
-    };
 
     /* ── Quiz engine ── */
 
@@ -275,6 +150,7 @@
         elCLabel.textContent = "Loading... [";
 
         var tuneKey = self.playbackMode === "audio" ? self.currentTune.id : self.currentTune.yt;
+        var opts = self.playbackMode === "audio" ? {} : { minDuration: MIN_VIDEO_DURATION, randomSeek: true };
         currentPlayer.loadAndPlay(tuneKey, function (err) {
             if (err) {
                 self.recordRound("", false);
@@ -285,7 +161,7 @@
             elPrompt.hidden = false;
             self.renderChoices();
             self.startCountdown();
-        });
+        }, opts);
     };
 
     QuizEngine.prototype.renderChoices = function () {
@@ -425,39 +301,35 @@
         elMenu.innerHTML =
             '<span class="title mono">GUESS THE PROVIDER</span>' +
             "<span class='mono'>" + total + " playable tunes from " + ALL_PROVIDERS.length + " providers</span>" +
-            "<span class='mono' id='mode-selector'><strong>Playback:</strong> " +
-            "<button class='menu-btn mode-btn' data-playback='audio'>🔊 audio</button> " +
-            "<button class='menu-btn mode-btn' data-playback='video'>🎬 video</button></span>" +
+            "<fieldset class='playback-mode-selector'>" +
+            "<legend class='muted'>Playback:</legend>" +
+            "<label><input type='radio' name='quiz-playback' value='audio' checked> 🔊 audio</label> " +
+            "<label><input type='radio' name='quiz-playback' value='video'> 🎬 video</label>" +
+            "</fieldset>" +
             "<button class='menu-btn' data-mode='quick' data-rounds='5'>[ Quick Game (5) ]</button>" +
             "<button class='menu-btn' data-mode='universe' data-rounds='42'>[ Life, Universe &amp; Everything (42) ]</button>" +
             "<button class='menu-btn' data-mode='all'>[ All (" + total + " tunes) ]</button>" +
             "<p id='menu-status' class='muted' hidden></p>";
         
         var elMenuStatus = elMenu.querySelector("#menu-status");
-        var buttons = elMenu.querySelectorAll(".menu-btn:not(.mode-btn)");
-        var modeButtons = elMenu.querySelectorAll(".mode-btn");
+        var buttons = elMenu.querySelectorAll(".menu-btn");
+        var modeRadios = elMenu.querySelectorAll("input[name='quiz-playback']");
 
-        // Set initial selected mode
+        // Load saved mode preference
         selectedMode = localStorage.getItem("quiz-playback-mode") || "audio";
-        modeButtons.forEach(function (btn) {
-            if (btn.dataset.playback === selectedMode) {
-                btn.classList.add("active");
+        modeRadios.forEach(function (radio) {
+            if (radio.value === selectedMode) {
+                radio.checked = true;
             }
-        });
-
-        // Mode selection
-        modeButtons.forEach(function (btn) {
-            btn.addEventListener("click", function () {
-                modeButtons.forEach(function (b) { b.classList.remove("active"); });
-                btn.classList.add("active");
-                selectedMode = btn.dataset.playback;
+            radio.addEventListener("change", function () {
+                selectedMode = this.value;
                 localStorage.setItem("quiz-playback-mode", selectedMode);
             });
         });
 
         function setBusy(busy) {
             Array.prototype.forEach.call(buttons, function (b) { b.disabled = busy; });
-            Array.prototype.forEach.call(modeButtons, function (b) { b.disabled = busy; });
+            Array.prototype.forEach.call(modeRadios, function (r) { r.disabled = busy; });
             elMenuStatus.hidden = false;
             if (selectedMode === "video") {
                 elMenuStatus.textContent = busy
@@ -479,22 +351,20 @@
                         setBusy(false);
                         elMenuStatus.hidden = true;
                         currentPlayer = new YoutubePlayer();
-                        engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0, "video");
+                        currentPlayer.init("player", function () {
+                            engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0, "video");
+                        });
                     }, function () { setBusy(false); });
                 } else {
-                    currentPlayer = new AudioPlayer("/teams/" + (new URL(window.location).pathname.split("/")[2]) + "/radio");
-                    currentPlayer.setup();
+                    currentPlayer = new AudioPlayer(radioPath);
+                    currentPlayer.init(elAudio);
                     engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0, "audio");
                 }
             });
         });
     }
 
-    /* ── YouTube API loading (only for video mode) ── */
-
-    var playerState = "idle"; // idle | loading | ready
-    var playerQueue = [];
-    var playerWatchdog = null;
+    /* ── YouTube API loading ── */
 
     function onApiReady(fn) {
         if (window.YT && YT.Player) { fn(); return; }
@@ -514,20 +384,17 @@
         if (playerWatchdog) clearTimeout(playerWatchdog);
         playerWatchdog = setTimeout(function () {
             if (playerState !== "loading") return;
-            playerState = "idle"; // next click retries from scratch
+            playerState = "idle";
             var q = playerQueue; playerQueue = [];
             q.forEach(function (item) { if (item.onFail) item.onFail(); });
         }, 8000);
 
         var go = function () {
-            var player = new YoutubePlayer();
-            player.setup(function () {
-                playerState = "ready";
-                if (playerWatchdog) { clearTimeout(playerWatchdog); playerWatchdog = null; }
-                var q = playerQueue.slice();
-                playerQueue = [];
-                q.forEach(function (item) { item.cb(); });
-            });
+            playerState = "ready";
+            if (playerWatchdog) { clearTimeout(playerWatchdog); playerWatchdog = null; }
+            var q = playerQueue.slice();
+            playerQueue = [];
+            q.forEach(function (item) { item.cb(); });
         };
 
         if (window.YT && YT.Player) { go(); return; }
