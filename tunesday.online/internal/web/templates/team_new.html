@@ -1,0 +1,20 @@
+{{define "content"}}
+<h2>Create a team</h2>
+<p>
+    If your team already uses the tunesday CLI, drop your <code>tunesday.json</code>
+    in the file field and everything gets imported. Otherwise leave it empty and
+    add your providers later.
+</p>
+<form method="POST" action="/teams" enctype="multipart/form-data">
+    <label>Team name</label>
+    <input type="text" name="team_name" required placeholder="USP Dev Team">
+
+    <label>Your provider name (you are a provider too)</label>
+    <input type="text" name="your_name" required placeholder="Alain">
+
+    <label>tunesday.json (optional)</label>
+    <input type="file" name="tunesday_json" accept=".json,application/json">
+
+    <button type="submit" class="terminal-btn">Create team</button>
+</form>
+{{end}}

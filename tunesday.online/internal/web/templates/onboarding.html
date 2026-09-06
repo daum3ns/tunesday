@@ -1,0 +1,15 @@
+{{define "content"}}
+<h2>Your teams</h2>
+{{if .Teams}}
+<ul class="team-list">
+    {{range .Teams}}
+    <li><a href="/teams/{{.Slug}}/dashboard">{{.Name}}</a> <span class="muted">(/teams/{{.Slug}})</span></li>
+    {{end}}
+</ul>
+{{else}}
+<p>You have no teams yet.</p>
+{{end}}
+<p>
+    <a class="terminal-btn" href="/teams/new">Create new team</a>
+</p>
+{{end}}

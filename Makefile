@@ -1,18 +1,15 @@
 SHELL := /bin/bash
 BUILD-DIRECTORY := ./build
-BINARY := tunesday
-BINARY-PATH := $(BUILD-DIRECTORY)/$(BINARY)
 
-.PHONY: build
+.PHONY: build-server test clean
 
-build:
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
+build-server:
 	@mkdir -p $(BUILD-DIRECTORY)
-	@rm -rf $(BINARY-PATH)
-	go build -o $(BINARY-PATH) ./cmd/tunesday
+	go build -ldflags "-X tunesday/tunesday.online/internal/web.Version=$(VERSION)" -o $(BUILD-DIRECTORY)/tunesday.online ./tunesday.online/cmd/server
 
-
-
-test: build
+test: build-server
 	go clean -testcache
 	go test -v ./...
 

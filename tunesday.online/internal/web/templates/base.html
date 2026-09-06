@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} — tunesday.online</title>
+    <link rel="stylesheet" href="/static/css/terminal.css">
+</head>
+<body>
+    <div id="header-wrap">
+        <pre id="header">{{.Header}}</pre>
+        <p class="header-dot-online">.online</p>
+    </div>
+    <nav class="terminal-nav">
+        <a href="/" class="terminal-btn">home</a>
+        {{if .CurrentUser}}
+        {{if .CurrentUser.MasterAdmin}}<a href="/admin/teams" class="terminal-btn master-admin-badge">all teams</a>{{end}}
+        <a href="/onboarding" class="terminal-btn">my teams</a>
+        <form method="POST" action="/logout" class="inline-form">
+            <button type="submit" class="terminal-btn">log out</button>
+        </form>
+        {{else}}
+        <a href="/login" class="terminal-btn">login</a>
+        <a href="/register" class="terminal-btn">register</a>
+        {{end}}
+    </nav>
+    {{if .Team}}
+    <div class="team-title">[ {{.Team.Name}} ] <span class="team-slug">/teams/{{.Team.Slug}}</span></div>
+    <nav class="terminal-nav">
+        <a href="/teams/{{.Team.Slug}}/dashboard" class="terminal-btn {{if eq .Tab "dashboard"}}active{{end}}">dashboard</a>
+        <a href="/teams/{{.Team.Slug}}/members" class="terminal-btn {{if eq .Tab "members"}}active{{end}}">members</a>
+        <a href="/teams/{{.Team.Slug}}/radio" class="terminal-btn {{if eq .Tab "radio"}}active{{end}}">radio</a>
+        <a href="/teams/{{.Team.Slug}}/stats" class="terminal-btn {{if eq .Tab "stats"}}active{{end}}">stats</a>
+        <a href="/teams/{{.Team.Slug}}/quiz" class="terminal-btn {{if eq .Tab "quiz"}}active{{end}}">quiz</a>
+        <a href="/teams/{{.Team.Slug}}/providers" class="terminal-btn {{if eq .Tab "providers"}}active{{end}}">roster</a>
+        {{if .CeremonyPath}}
+        <a href="{{.CeremonyPath}}" class="terminal-btn {{if eq .Tab "ceremony"}}active{{end}}">ceremony</a>
+        {{end}}
+    </nav>
+    {{end}}
+    <main>
+        <div class="terminal-box">
+            {{if .Error}}
+            <p class="terminal-error">&gt;&gt; {{.Error}}</p>
+            {{end}}
+            {{if .Message}}
+            <p class="terminal-message">&gt;&gt; {{.Message}}</p>
+            {{end}}
+            {{template "content" .}}
+        </div>
+    </main>
+    <footer class="terminal-footer">
+        <a href="https://github.com/daum3ns/tunesday" target="_blank" rel="noopener">github.com/daum3ns/tunesday</a>
+        <span class="muted"> · v{{.Version}}</span>
+    </footer>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{{define "content"}}
+<h2>You're invited: {{.TeamName}}</h2>
+<p>The invitation was sent to <strong>{{.Email}}</strong>.</p>
+
+<form method="POST" action="/invite/{{.Token}}">
+    {{if .ProviderName}}
+    <p>A team admin has assigned you the provider name:</p>
+    <p class="terminal-message">{{.ProviderName}}</p>
+    <input type="hidden" name="provider_id" value="{{.ProviderID}}">
+    {{else}}
+        {{if .Unassigned}}
+        <label>Pick one of the free provider names:</label>
+        <select name="provider_id">
+            <option value="0">— choose —</option>
+            {{range .Unassigned}}
+            <option value="{{.ID}}">{{.Name}}</option>
+            {{end}}
+        </select>
+        {{end}}
+        <label>...or enter your name as a new provider:</label>
+        <input type="text" name="provider_name" placeholder="e.g. Lukas">
+    {{end}}
+    <button type="submit" class="terminal-btn">Join team</button>
+</form>
+{{end}}

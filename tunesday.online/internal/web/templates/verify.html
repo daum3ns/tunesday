@@ -1,0 +1,9 @@
+{{define "content"}}
+<h2>{{.Title}}</h2>
+<p>{{.Message}}</p>
+{{if eq .Title "Verification"}}
+{{if eq .Message "Email verified! You can now log in."}}
+<p><a class="terminal-btn" href="/login">Login</a></p>
+{{end}}
+{{end}}
+{{end}}

@@ -1,0 +1,53 @@
+x-app-build: &app-build
+  context: ..
+  dockerfile: tunesday.online/Dockerfile
+
+services:
+  tunesday:
+    image: tunesday-online:local
+    build: *app-build
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - TUNESDAY_ONLINE_DATA_DIR=/data
+      - TUNESDAY_ONLINE_LISTEN_ADDR=:8080
+      - TUNESDAY_ONLINE_BASE_URL=${TUNESDAY_ONLINE_BASE_URL}
+      - TUNESDAY_ONLINE_SESSION_SECRET=${TUNESDAY_ONLINE_SESSION_SECRET}
+      - TUNESDAY_ONLINE_SESSION_SECURE=${TUNESDAY_ONLINE_SESSION_SECURE:-true}
+      - TUNESDAY_ONLINE_BCRYPT_COST=${TUNESDAY_ONLINE_BCRYPT_COST:-10}
+      - TUNESDAY_ONLINE_SMTP_HOST=${TUNESDAY_ONLINE_SMTP_HOST}
+      - TUNESDAY_ONLINE_SMTP_PORT=${TUNESDAY_ONLINE_SMTP_PORT:-587}
+      - TUNESDAY_ONLINE_SMTP_USER=${TUNESDAY_ONLINE_SMTP_USER}
+      - TUNESDAY_ONLINE_SMTP_PASS=${TUNESDAY_ONLINE_SMTP_PASS}
+      - TUNESDAY_ONLINE_SMTP_FROM=${TUNESDAY_ONLINE_SMTP_FROM:-noreply@tunesday.online}
+      - TUNESDAY_ONLINE_YTDLP_PATH=${TUNESDAY_ONLINE_YTDLP_PATH:-yt-dlp}
+      - TUNESDAY_MASTER_ADMIN_EMAIL=${TUNESDAY_MASTER_ADMIN_EMAIL:-}
+    restart: unless-stopped
+
+  backup:
+    image: tunesday-online:local
+    build: *app-build
+    volumes:
+      - ./data:/data
+    entrypoint: ["/bin/sh"]
+    command:
+      - -c
+      - "sleep 120; while true; do /app/scripts/backup.sh; sleep 86400; done"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

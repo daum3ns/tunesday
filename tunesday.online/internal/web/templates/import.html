@@ -1,0 +1,14 @@
+{{define "content"}}
+<h2>Import tunesday.json</h2>
+<p>
+    Upload a <code>tunesday.json</code> to <strong>replace</strong> all providers and
+    tunes of this team. You will see exactly what changes before anything happens.
+    Members, their magic links, and ceremony history are kept.
+</p>
+<form method="POST" action="/teams/{{.Team.Slug}}/import" enctype="multipart/form-data">
+    <label>tunesday.json</label>
+    <input type="file" name="tunesday_json" accept=".json,application/json" required>
+    <button type="submit" class="terminal-btn">Continue — show me what would change</button>
+</form>
+<p><a class="terminal-btn" href="/teams/{{.Team.Slug}}/dashboard">cancel</a></p>
+{{end}}

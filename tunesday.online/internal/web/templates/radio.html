@@ -1,0 +1,54 @@
+{{define "content"}}
+<h2>The Radio Room</h2>
+
+<div id="radio-now" class="terminal-box">
+    <p id="radio-status">connecting…</p>
+    <p id="radio-track" class="muted">nothing playing</p>
+    <p class="muted" id="radio-meta"></p>
+    <audio id="radio-audio" preload="none"></audio>
+    <div id="radio-now-playing">
+        <div id="radio-progress"><div id="radio-progress-fill"></div></div>
+        <p class="muted" id="radio-pos"></p>
+    </div>
+</div>
+
+<div class="radio-controls">
+    <button id="btn-play"  class="terminal-btn">▶ play</button>
+    <button id="btn-pause" class="terminal-btn" hidden>❚❚ pause</button>
+    <button id="btn-prev"  class="terminal-btn">⏮ prev</button>
+    <button id="btn-next"  class="terminal-btn">⏭ next</button>
+    <button id="btn-shuffle" class="terminal-btn">⇄ ordered</button>
+</div>
+<div class="radio-controls vol-row">
+    <span id="radio-vol-icon" class="muted">🔊</span>
+    <input type="range" id="radio-volume" min="0" max="100" value="100" aria-label="volume">
+    <span id="radio-vol-label" class="muted">100%</span>
+</div>
+
+<h3>Who's listening</h3>
+<ul id="radio-listeners" class="attendee-list"><li class="muted">nobody connected</li></ul>
+
+<h3>Playlist</h3>
+{{if .HasTunes}}
+<table class="terminal-table">
+    <thead><tr><th></th><th>title</th><th>provider</th></tr></thead>
+    <tbody>
+    {{range .Tunes}}
+    <tr data-tune="{{.ID}}" data-yt="{{.YouTubeID}}" data-provider="{{.ProviderName}}" data-added="{{.AddedAt.Format "2006-01-02"}}">
+        <td><button class="terminal-btn small play-this">▶</button></td>
+        <td>{{.Title}}</td>
+        <td>{{.ProviderName}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="muted">No tunes yet — import a tunesday.json or add tunes after a ceremony.</p>
+{{end}}
+
+<script
+    src="/static/js/radio.js"
+    data-ws="/teams/{{.Team.Slug}}/radio/ws"
+    data-base="/teams/{{.Team.Slug}}/radio"
+></script>
+{{end}}

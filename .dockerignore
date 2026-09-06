@@ -1,0 +1,14 @@
+.git
+.idea
+build/
+AGENTS.md
+tunesday.json
+tunesday.online.md
+deployment.md
+tunesday.online/data/
+tunesday.online/.env
+tunesday.online/.env.example
+tunesday.online/.gitignore
+tunesday.online/.mailhog
+dev-test.sh
+**/*_test.go

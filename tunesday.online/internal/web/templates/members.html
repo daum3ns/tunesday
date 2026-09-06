@@ -1,0 +1,181 @@
+{{define "content"}}
+<h2>Members</h2>
+
+<table class="terminal-table">
+    <thead>
+    <tr>
+        <th>email</th>
+        <th>provider</th>
+        <th>role</th>
+        {{if eq .Member.Role "admin"}}<th>actions</th>{{end}}
+    </tr>
+    </thead>
+    <tbody>
+    {{$team := .Team}}{{$me := .Member}}
+    {{range .Members}}
+    <tr>
+        <td>{{.Email}}{{if eq .UserID $me.UserID}} <span class="muted">(you)</span>{{end}}</td>
+        <td>{{.ProviderName}}</td>
+        <td>{{.Role}}</td>
+        {{if eq $me.Role "admin"}}
+        <td>
+            {{if ne .UserID $me.UserID}}
+            <form method="POST" action="/teams/{{$team.Slug}}/members/{{.UserID}}/role" class="inline-form">
+                <input type="hidden" name="role" value="{{if eq .Role "admin"}}member{{else}}admin{{end}}">
+                <button type="submit" class="terminal-btn small">
+                    {{if eq .Role "admin"}}demote{{else}}promote{{end}}
+                </button>
+            </form>
+            {{end}}
+            <form method="POST" action="/teams/{{$team.Slug}}/members/{{.UserID}}/remove" class="inline-form"
+                  onsubmit="return confirm('Remove {{.Email}} from the team?');">
+                <button type="submit" class="terminal-btn small danger">remove</button>
+            </form>
+        </td>
+        {{end}}
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+
+{{if .UnassignedSeats}}
+<p class="muted">{{.UnassignedSeats}} seat{{if gt .UnassignedSeats 1}}s{{end}} in the
+roster still have no member → <a href="/teams/{{.Team.Slug}}/providers">roster</a></p>
+{{end}}
+
+{{if eq .Member.Role "admin"}}
+<h3>Invite a member</h3>
+<form method="POST" action="/teams/{{.Team.Slug}}/members">
+    <label>Email</label>
+    <input type="email" name="email" required placeholder="teammate@example.com">
+    <label>Provider name (optional — leave empty to let them choose on join)</label>
+    <input type="text" name="provider_name" placeholder="e.g. Lukas">
+    <button type="submit" class="terminal-btn">send invitation</button>
+</form>
+
+{{if .Providers}}
+<h3>Assign providers</h3>
+<table class="terminal-table">
+    <thead>
+    <tr><th>member</th><th>move to provider</th><th></th></tr>
+    </thead>
+    <tbody>
+    {{$team := .Team}}
+    {{range .Members}}
+    {{$memberID := .UserID}}{{$current := .ProviderID}}
+    <tr>
+    <form method="POST" action="/teams/{{$team.Slug}}/members/{{.UserID}}/provider">
+        <td>{{.Email}} <span class="muted">(currently {{.ProviderName}})</span></td>
+        <td>
+            <select name="provider_id">
+                {{range $.Providers}}
+                <option value="{{.ID}}" {{if eq .ID $current}}selected{{end}}
+                    {{if and .MemberUserID (ne .MemberUserID $memberID)}}disabled{{end}}>
+                    {{.Name}}{{if and .MemberUserID (ne .MemberUserID $memberID)}} — taken{{end}}
+                </option>
+                {{end}}
+            </select>
+        </td>
+        <td><button type="submit" class="terminal-btn small">assign</button></td>
+    </form>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{end}}
+
+{{if .PendingInvites}}
+<h3>Pending invitations</h3>
+<ul class="team-list">
+    {{range .PendingInvites}}
+    <li>
+        {{.Email}}
+        <span class="muted">(share manually: {{.Token}})</span>
+    </li>
+    {{end}}
+</ul>
+<p class="muted">Magic links stay valid until you remove the member.</p>
+{{end}}
+
+<h3>Team settings</h3>
+<form method="POST" action="/teams/{{.Team.Slug}}/settings">
+    <label>Timezone</label>
+    <select id="tz-select" name="timezone">
+        <option value="UTC">UTC</option>
+        <option value="Africa/Cairo">Africa/Cairo</option>
+        <option value="Africa/Johannesburg">Africa/Johannesburg</option>
+        <option value="Africa/Lagos">Africa/Lagos</option>
+        <option value="America/Anchorage">America/Anchorage</option>
+        <option value="America/Chicago">America/Chicago</option>
+        <option value="America/Denver">America/Denver</option>
+        <option value="America/Los_Angeles">America/Los_Angeles</option>
+        <option value="America/Mexico_City">America/Mexico_City</option>
+        <option value="America/New_York">America/New_York</option>
+        <option value="America/Sao_Paulo">America/Sao_Paulo</option>
+        <option value="America/Toronto">America/Toronto</option>
+        <option value="America/Vancouver">America/Vancouver</option>
+        <option value="Asia/Bangkok">Asia/Bangkok</option>
+        <option value="Asia/Dubai">Asia/Dubai</option>
+        <option value="Asia/Hong_Kong">Asia/Hong_Kong</option>
+        <option value="Asia/Kolkata">Asia/Kolkata</option>
+        <option value="Asia/Manila">Asia/Manila</option>
+        <option value="Asia/Seoul">Asia/Seoul</option>
+        <option value="Asia/Shanghai">Asia/Shanghai</option>
+        <option value="Asia/Singapore">Asia/Singapore</option>
+        <option value="Asia/Tokyo">Asia/Tokyo</option>
+        <option value="Australia/Brisbane">Australia/Brisbane</option>
+        <option value="Australia/Melbourne">Australia/Melbourne</option>
+        <option value="Australia/Sydney">Australia/Sydney</option>
+        <option value="Europe/Amsterdam">Europe/Amsterdam</option>
+        <option value="Europe/Athens">Europe/Athens</option>
+        <option value="Europe/Berlin">Europe/Berlin</option>
+        <option value="Europe/Brussels">Europe/Brussels</option>
+        <option value="Europe/Budapest">Europe/Budapest</option>
+        <option value="Europe/Dublin">Europe/Dublin</option>
+        <option value="Europe/Helsinki">Europe/Helsinki</option>
+        <option value="Europe/Istanbul">Europe/Istanbul</option>
+        <option value="Europe/Lisbon">Europe/Lisbon</option>
+        <option value="Europe/London">Europe/London</option>
+        <option value="Europe/Madrid">Europe/Madrid</option>
+        <option value="Europe/Moscow">Europe/Moscow</option>
+        <option value="Europe/Paris">Europe/Paris</option>
+        <option value="Europe/Prague">Europe/Prague</option>
+        <option value="Europe/Rome">Europe/Rome</option>
+        <option value="Europe/Stockholm">Europe/Stockholm</option>
+        <option value="Europe/Vienna">Europe/Vienna</option>
+        <option value="Europe/Warsaw">Europe/Warsaw</option>
+        <option value="Europe/Zurich">Europe/Zurich</option>
+        <option value="Pacific/Auckland">Pacific/Auckland</option>
+        <option value="Pacific/Fiji">Pacific/Fiji</option>
+        <option value="Pacific/Honolulu">Pacific/Honolulu</option>
+    </select>
+    <label>Tunesday</label>
+    <select name="tunesday_weekday">
+        {{range $i, $name := .Weekdays}}
+        <option value="{{$i}}" {{if eq $i $.TunesdayWeekday}}selected{{end}}>{{$name}}</option>
+        {{end}}
+    </select>
+    <p class="muted">The ceremony only opens on your Tunesday. Admin override is always available on the dashboard.</p>
+    <button type="submit" class="terminal-btn">save team settings</button>
+</form>
+
+<script>
+(function() {
+    var select = document.getElementById('tz-select');
+    if (!select) return;
+    
+    try {
+        var detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (detected && select.value === 'UTC') {
+            var option = select.querySelector('option[value="' + detected + '"]');
+            if (option) {
+                select.value = detected;
+            }
+        }
+    } catch (e) {
+        // Detection failed, keep current value
+    }
+})();
+</script>
+{{end}}
+{{end}}

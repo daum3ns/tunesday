@@ -1,0 +1,20 @@
+{{define "content"}}
+<h2>All Teams</h2>
+{{if .Teams}}
+<table class="terminal-table">
+    <thead><tr><th>name</th><th>slug</th><th>created</th><th></th></tr></thead>
+    <tbody>
+    {{range .Teams}}
+    <tr>
+        <td>{{.Name}}</td>
+        <td class="muted">{{.Slug}}</td>
+        <td class="muted">{{.CreatedAt.Format "2006-01-02"}}</td>
+        <td><a href="/teams/{{.Slug}}/dashboard" class="terminal-btn small">dashboard</a></td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="muted">No teams exist yet.</p>
+{{end}}
+{{end}}

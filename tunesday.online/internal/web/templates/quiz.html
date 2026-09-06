@@ -1,0 +1,75 @@
+{{define "content"}}
+<h2>Guess the Provider</h2>
+
+<div id="quiz-wrap">
+    <div id="quiz-loading" class="muted">warming up the decks…</div>
+
+    <div id="quiz-menu" hidden></div>
+
+    <div id="quiz-game" hidden>
+        <p id="quiz-status"></p>
+        <p><span id="countdown-label">[</span><span id="countdown-bar"></span><span>]</span></p>
+        <p id="quiz-prompt" class="muted">Who submitted this gem?</p>
+        <div id="quiz-answers"></div>
+        <p id="quiz-feedback" hidden></p>
+    </div>
+
+    <div id="quiz-end" hidden></div>
+    <div id="quiz-error" hidden></div>
+
+    <audio id="quiz-audio" preload="none"></audio>
+    
+    <div id="player-wrapper" hidden>
+        <div id="player"></div>
+    </div>
+</div>
+
+{{if not .Playable}}
+<div class="terminal-error">
+    The quiz needs at least 5 playable tunes (valid YouTube links) from at least 2 providers.
+    Currently: {{.TuneCount}} playable tunes, {{.ProviderCount}} providers.
+</div>
+{{else}}
+
+<h3>Team bests</h3>
+{{if .TeamBests}}
+<table class="terminal-table">
+    <thead><tr><th>player</th><th>best</th><th>games</th></tr></thead>
+    <tbody>
+    {{range .TeamBests}}
+    <tr>
+        <td>{{if .UserEmail}}{{.UserEmail}}{{else}}<span class="muted">(removed)</span>{{end}}</td>
+        <td>{{.Pct}}% ({{.Score}}/{{.Total}})</td>
+        <td>{{.Games}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="muted">Nobody has locked in a score yet. Be the first.</p>
+{{end}}
+
+<h3>Recent games</h3>
+{{if .RecentGames}}
+<table class="terminal-table">
+    <thead><tr><th>when</th><th>player</th><th>mode</th><th>result</th></tr></thead>
+    <tbody>
+    {{range .RecentGames}}
+    <tr>
+        <td>{{.FinishedAt.Format "2006-01-02 15:04"}}</td>
+        <td>{{if .UserEmail}}{{.UserEmail}}{{else}}<span class="muted">(removed)</span>{{end}}</td>
+        <td>{{.Mode}}</td>
+        <td>{{.Score}}/{{.Total}} ({{.Pct}}%)</td>
+    </tr>
+    {{end}}
+    </tbody>
+</table>
+{{else}}
+<p class="muted">No games logged yet.</p>
+{{end}}
+{{end}}
+
+<script id="quiz-data" type="application/json">{{.QuizData}}</script>
+<script src="/static/js/players.js"></script>
+<script src="/static/js/quiz.js" data-result="/teams/{{.Team.Slug}}/quiz/result" data-radio="/teams/{{.Team.Slug}}/radio"></script>
+{{end}}

@@ -1,0 +1,54 @@
+{{define "content"}}
+<h2>The Tunesday Roulette</h2>
+
+<div class="share-box">
+    <p class="share-line">Session link (share it with the team):
+        <button type="button" class="terminal-btn small" id="mute-btn">sound</button>
+    </p>
+    <p><code id="session-url">…</code>
+        <button type="button" class="terminal-btn small" id="copy-link">copy</button>
+    </p>
+</div>
+
+<div id="roulette">
+    <div id="countdown" hidden></div>
+    <div id="turntable"></div>
+    <div id="drum-status">connecting to the broadcast…</div>
+</div>
+
+<div id="attendee-zone">
+    <h3>Tuning forks connected</h3>
+    <ul id="attendees" class="attendee-list"></ul>
+</div>
+
+{{if .IsHost}}
+<div id="host-zone">
+    <button id="reveal-btn" class="terminal-btn big" disabled>⬇ Drop the Needle</button>
+    <p class="muted" id="host-hint">need at least 2 eligible providers in the room</p>
+</div>
+{{end}}
+
+<div id="winner-zone" hidden>
+    <pre id="big-winner"></pre>
+    <div id="pullup-zone" hidden>
+        <button id="pullup-btn" class="terminal-btn big">⤴ Pull UP the needle</button>
+        <p class="muted" id="pullup-status"></p>
+        <p class="muted">If more than half of the connected attendees pull up, the ceremony re-rolls.</p>
+    </div>
+    <div id="tune-zone" hidden>
+        <h3>The chosen record must provide the tune</h3>
+        <form method="POST" action="{{.CeremonyPath}}/tune">
+            <label>YouTube link</label>
+            <input type="url" name="link" required placeholder="https://www.youtube.com/watch?v=...">
+            <button type="submit" class="terminal-btn">Register today's tune</button>
+        </form>
+    </div>
+    <p id="complete-info" hidden></p>
+</div>
+
+<script
+    src="/static/js/ceremony.js"
+    data-ws="{{.CeremonyPath}}/ws"
+    data-reveal="{{.CeremonyPath}}/reveal"
+></script>
+{{end}}
