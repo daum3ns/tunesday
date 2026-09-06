@@ -3,7 +3,7 @@
 
     var SNIPPET_DURATION = 10;
     var COUNTDOWN_STEPS = 20;
-    var FEEDBACK_DELAY = 2000;
+    var FEEDBACK_DELAY = 3500;  // increased from 2000
     var MIN_VIDEO_DURATION = 25;
 
     var script = document.currentScript;
@@ -27,6 +27,7 @@
     var elFeedback = $("quiz-feedback");
     var elPrompt = $("quiz-prompt");
     var elPlayerW = $("player-wrapper");
+    var elAudio = $("quiz-audio");
 
     var ytPlayer = null;
     var onVideoReady = null;
@@ -34,6 +35,8 @@
     var loadTimeout = null;
     var roundTimedOut = false;
     var engine = null;
+    var currentPlayer = null;
+    var selectedMode = null;
 
     function hideEl(el) { el.hidden = true; }
     function showEl(el) { el.hidden = false; }
@@ -55,16 +58,74 @@
         elError.textContent = msg;
     }
 
-    /* ── YouTube player ── */
+    /* ── Audio Player ── */
 
-    function setupPlayer(cb) {
+    function AudioPlayer(basePath) {
+        this.basePath = basePath;
+        this.loadTimeout = null;
+    }
+
+    AudioPlayer.prototype.setup = function (cb) {
+        if (cb) cb();
+    };
+
+    AudioPlayer.prototype.loadAndPlay = function (tuneId, cb) {
+        var self = this;
+        var settled = false;
+
+        if (self.loadTimeout) clearTimeout(self.loadTimeout);
+        self.loadTimeout = setTimeout(function () {
+            if (!settled) {
+                settled = true;
+                self.loadTimeout = null;
+                cb(new Error("Audio load timed out"));
+            }
+        }, 15000);
+
+        fetch(self.basePath + "/stream?tune_id=" + tuneId)
+            .then(function (res) {
+                if (!res.ok) throw new Error("stream " + res.status);
+                return res.json();
+            })
+            .then(function (data) {
+                if (settled) return;
+                settled = true;
+                if (self.loadTimeout) { clearTimeout(self.loadTimeout); self.loadTimeout = null; }
+                
+                elAudio.src = data.url;
+                elAudio.load();
+                elAudio.play().catch(function () {
+                    // Autoplay blocked by browser, silent fail (user will see it's not playing)
+                });
+                cb();
+            })
+            .catch(function (err) {
+                if (!settled) {
+                    settled = true;
+                    if (self.loadTimeout) { clearTimeout(self.loadTimeout); self.loadTimeout = null; }
+                    cb(new Error("Audio unavailable"));
+                }
+            });
+    };
+
+    AudioPlayer.prototype.pause = function () {
+        if (elAudio) elAudio.pause();
+    };
+
+    /* ── YouTube Player ── */
+
+    function YoutubePlayer() {
+        this.loadTimeout = null;
+    }
+
+    YoutubePlayer.prototype.setup = function (cb) {
         showEl(elPlayerW);
         ytPlayer = new YT.Player("player", {
             height: "180",
             width: "100%",
             playerVars: { autoplay: 1, controls: 0, enablejsapi: 1, modestbranding: 1, rel: 0 },
             events: {
-                onReady: function () { cb(); },
+                onReady: function () { if (cb) cb(); },
                 onStateChange: function (ev) {
                     if (ev.data === YT.PlayerState.PLAYING && onVideoReady) {
                         onVideoReady();
@@ -76,23 +137,26 @@
                         var fail = onLoadError;
                         onLoadError = null;
                         onVideoReady = null;
-                        if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
+                        if (this.loadTimeout) { clearTimeout(this.loadTimeout); this.loadTimeout = null; }
                         fail(new Error("Video unavailable"));
                     }
                 }
             }
         });
-    }
+    };
 
-    function loadVideo(videoId, cb) {
+    YoutubePlayer.prototype.loadAndPlay = function (videoId, cb) {
+        var self = this;
         var settled = false;
         onLoadError = cb;
-        loadTimeout = setTimeout(function () {
+        
+        if (self.loadTimeout) clearTimeout(self.loadTimeout);
+        self.loadTimeout = setTimeout(function () {
             if (!settled && onLoadError) {
                 settled = true;
                 onVideoReady = null;
                 onLoadError = null;
-                loadTimeout = null;
+                self.loadTimeout = null;
                 cb(new Error("Video load timed out"));
             }
         }, 15000);
@@ -100,7 +164,7 @@
         onVideoReady = function () {
             if (settled) return;
             settled = true;
-            if (loadTimeout) { clearTimeout(loadTimeout); loadTimeout = null; }
+            if (self.loadTimeout) { clearTimeout(self.loadTimeout); self.loadTimeout = null; }
             onVideoReady = null;
             onLoadError = null;
             var dur = ytPlayer.getDuration();
@@ -114,11 +178,11 @@
             cb();
         };
         ytPlayer.loadVideoById(videoId);
-    }
+    };
 
-    function pauseVideo() {
+    YoutubePlayer.prototype.pause = function () {
         if (ytPlayer && typeof ytPlayer.pauseVideo === "function") ytPlayer.pauseVideo();
-    }
+    };
 
     /* ── Quiz engine ── */
 
@@ -134,6 +198,7 @@
         this.rounds = [];
         this.mode = "quick";
         this.startedAt = null;
+        this.playbackMode = "audio";
     }
 
     QuizEngine.prototype.shuffle = function (arr) {
@@ -154,7 +219,7 @@
     QuizEngine.prototype.renderCountdown = function (remaining) {
         var filled = Math.max(0, Math.round(remaining / SNIPPET_DURATION * COUNTDOWN_STEPS));
         var bar = "";
-        for (var i = 0; i < COUNTDOWN_STEPS; i++) bar += i < filled ? "\u2588" : "\u2591";
+        for (var i = 0; i < COUNTDOWN_STEPS; i++) bar += i < filled ? "█" : "░";
         elCBar.textContent = bar + " " + remaining + "s";
     };
 
@@ -163,7 +228,7 @@
         if (this.feedbackTimer) { clearTimeout(this.feedbackTimer); this.feedbackTimer = null; }
     };
 
-    QuizEngine.prototype.startGame = function (modeName, rounds) {
+    QuizEngine.prototype.startGame = function (modeName, rounds, playbackMode) {
         var self = this;
         if (ALL_TUNES.length === 0) { showError("No playable tunes in the team library yet."); return; }
         if (ALL_PROVIDERS.length < 2) { showError("Need at least 2 providers with submitted tunes."); return; }
@@ -176,6 +241,7 @@
         self.score = 0;
         self.rounds = [];
         self.mode = modeName;
+        self.playbackMode = playbackMode || "audio";
         self.startedAt = new Date().toISOString();
 
         showGame();
@@ -202,13 +268,14 @@
         self.round++;
 
         self.renderCountdown(SNIPPET_DURATION);
-        elStatus.textContent = "Round " + self.round + "/" + self.total + "  \u2502  Score: " + self.score;
+        elStatus.textContent = "Round " + self.round + "/" + self.total + "  │  Score: " + self.score;
         elAnswers.innerHTML = "";
         elFeedback.hidden = true;
         elPrompt.hidden = true;
         elCLabel.textContent = "Loading... [";
 
-        loadVideo(self.currentTune.yt, function (err) {
+        var tuneKey = self.playbackMode === "audio" ? self.currentTune.id : self.currentTune.yt;
+        currentPlayer.loadAndPlay(tuneKey, function (err) {
             if (err) {
                 self.recordRound("", false);
                 self.nextRound();
@@ -246,7 +313,7 @@
                 self.countdownTimer = null;
                 if (!self.guessed) {
                     roundTimedOut = true;
-                    pauseVideo();
+                    currentPlayer.pause();
                     self.showFeedback(false, null);
                 }
             }
@@ -257,7 +324,7 @@
         if (this.guessed) return;
         this.guessed = true;
         this.clearTimers();
-        pauseVideo();
+        currentPlayer.pause();
         this.showFeedback(provider === this.currentTune.provider, provider);
     };
 
@@ -270,16 +337,16 @@
 
         if (isCorrect) {
             elFeedback.className = "correct";
-            elFeedback.textContent = "\u2714 Correct! " + provider + " submitted \"" + tuneName + "\"";
+            elFeedback.textContent = "✔ Correct! " + provider + " submitted \"" + tuneName + "\"";
         } else if (roundTimedOut) {
             elFeedback.className = "wrong";
-            elFeedback.textContent = "\u23F1 Time's up! " + provider + " submitted \"" + tuneName + "\"";
+            elFeedback.textContent = "⏱ Time's up! " + provider + " submitted \"" + tuneName + "\"";
         } else {
             elFeedback.className = "wrong";
-            elFeedback.textContent = "\u2718 Wrong! " + provider + " submitted \"" + tuneName + "\"";
+            elFeedback.textContent = "✘ Wrong! " + provider + " submitted \"" + tuneName + "\"";
         }
         elFeedback.hidden = false;
-        elStatus.textContent = "Round " + self.round + "/" + self.total + "  \u2502  Score: " + self.score;
+        elStatus.textContent = "Round " + self.round + "/" + self.total + "  │  Score: " + self.score;
 
         var btns = elAnswers.querySelectorAll(".answer-btn");
         btns.forEach(function (btn) {
@@ -295,7 +362,7 @@
     QuizEngine.prototype.endGame = function () {
         var self = this;
         self.clearTimers();
-        pauseVideo();
+        currentPlayer.pause();
         hideEl(elGame);
         hideEl(elPlayerW);
         showEl(elEnd);
@@ -303,7 +370,7 @@
         var pct = self.total > 0 ? Math.round(self.score / self.total * 100) : 0;
         var filled = Math.round(pct / 100 * COUNTDOWN_STEPS);
         var bar = "";
-        for (var i = 0; i < COUNTDOWN_STEPS; i++) bar += i < filled ? "\u2588" : "\u2591";
+        for (var i = 0; i < COUNTDOWN_STEPS; i++) bar += i < filled ? "█" : "░";
 
         var msg;
         if (pct === 100) msg = "Perfect! You know your team inside out.";
@@ -337,18 +404,18 @@
         }).then(function (out) {
             var note = $("quiz-save-state");
             if (note) {
-                note.textContent = "\u2714 saved to the leaderboard: " + out.score + "/" + out.total +
+                note.textContent = "✔ saved to the leaderboard: " + out.score + "/" + out.total +
                     (out.score === self.score ? " — the judges agree" : " (your count differed, ours rules)");
             }
         }).catch(function (err) {
             var note = $("quiz-save-state");
-            if (note) note.textContent = "\u2718 score not saved (" + err.message + ")";
+            if (note) note.textContent = "✘ score not saved (" + err.message + ")";
         });
     };
 
     QuizEngine.prototype.reset = function () {
         this.clearTimers();
-        pauseVideo();
+        currentPlayer.pause();
         buildMenu();
         showMenu();
     };
@@ -358,43 +425,77 @@
         elMenu.innerHTML =
             '<span class="title mono">GUESS THE PROVIDER</span>' +
             "<span class='mono'>" + total + " playable tunes from " + ALL_PROVIDERS.length + " providers</span>" +
+            "<span class='mono' id='mode-selector'><strong>Playback:</strong> " +
+            "<button class='menu-btn mode-btn' data-playback='audio'>🔊 audio</button> " +
+            "<button class='menu-btn mode-btn' data-playback='video'>🎬 video</button></span>" +
             "<button class='menu-btn' data-mode='quick' data-rounds='5'>[ Quick Game (5) ]</button>" +
             "<button class='menu-btn' data-mode='universe' data-rounds='42'>[ Life, Universe &amp; Everything (42) ]</button>" +
             "<button class='menu-btn' data-mode='all'>[ All (" + total + " tunes) ]</button>" +
             "<p id='menu-status' class='muted' hidden></p>";
+        
         var elMenuStatus = elMenu.querySelector("#menu-status");
-        var buttons = elMenu.querySelectorAll(".menu-btn");
+        var buttons = elMenu.querySelectorAll(".menu-btn:not(.mode-btn)");
+        var modeButtons = elMenu.querySelectorAll(".mode-btn");
+
+        // Set initial selected mode
+        selectedMode = localStorage.getItem("quiz-playback-mode") || "audio";
+        modeButtons.forEach(function (btn) {
+            if (btn.dataset.playback === selectedMode) {
+                btn.classList.add("active");
+            }
+        });
+
+        // Mode selection
+        modeButtons.forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                modeButtons.forEach(function (b) { b.classList.remove("active"); });
+                btn.classList.add("active");
+                selectedMode = btn.dataset.playback;
+                localStorage.setItem("quiz-playback-mode", selectedMode);
+            });
+        });
 
         function setBusy(busy) {
             Array.prototype.forEach.call(buttons, function (b) { b.disabled = busy; });
+            Array.prototype.forEach.call(modeButtons, function (b) { b.disabled = busy; });
             elMenuStatus.hidden = false;
-            elMenuStatus.textContent = busy
-                ? "arming the player…"
-                : "the YouTube player did not load. an ad/tracker blocker, hardened browser " +
-                  "(Brave Shields, strict tracking protection) or a company proxy/CA setup is " +
-                  "blocking youtube.com. allow it for this site and click again.";
+            if (selectedMode === "video") {
+                elMenuStatus.textContent = busy
+                    ? "arming the player…"
+                    : "the YouTube player did not load. an ad/tracker blocker, hardened browser " +
+                      "(Brave Shields, strict tracking protection) or a company proxy/CA setup is " +
+                      "blocking youtube.com. allow it for this site and click again.";
+            } else {
+                elMenuStatus.textContent = busy ? "starting audio quiz…" : "";
+                elMenuStatus.hidden = !busy;
+            }
         }
 
         Array.prototype.forEach.call(buttons, function (btn) {
             btn.addEventListener("click", function () {
-                setBusy(true);
-                ensurePlayer(function () {
-                    setBusy(false);
-                    elMenuStatus.hidden = true;
-                    engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0);
-                }, function () { setBusy(false); });
+                if (selectedMode === "video") {
+                    setBusy(true);
+                    ensureVideoPlayer(function () {
+                        setBusy(false);
+                        elMenuStatus.hidden = true;
+                        currentPlayer = new YoutubePlayer();
+                        engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0, "video");
+                    }, function () { setBusy(false); });
+                } else {
+                    currentPlayer = new AudioPlayer("/teams/" + (new URL(window.location).pathname.split("/")[2]) + "/radio");
+                    currentPlayer.setup();
+                    engine.startGame(btn.dataset.mode, btn.dataset.rounds ? parseInt(btn.dataset.rounds, 10) : 0, "audio");
+                }
             });
         });
     }
 
-    /* ── YouTube API loading: state machine, chained callbacks, watchdog ── */
+    /* ── YouTube API loading (only for video mode) ── */
 
     var playerState = "idle"; // idle | loading | ready
     var playerQueue = [];
     var playerWatchdog = null;
 
-    // onApiReady installs a handler for the global YouTube callback without
-    // ever clobbering an existing one (coexists with radio.js on the same page).
     function onApiReady(fn) {
         if (window.YT && YT.Player) { fn(); return; }
         var prev = window.onYouTubeIframeAPIReady;
@@ -404,7 +505,7 @@
         };
     }
 
-    function ensurePlayer(cb, onFail) {
+    function ensureVideoPlayer(cb, onFail) {
         if (playerState === "ready") return cb();
         playerQueue.push({ cb: cb, onFail: onFail });
         if (playerState === "loading") return;
@@ -419,7 +520,8 @@
         }, 8000);
 
         var go = function () {
-            setupPlayer(function () {
+            var player = new YoutubePlayer();
+            player.setup(function () {
                 playerState = "ready";
                 if (playerWatchdog) { clearTimeout(playerWatchdog); playerWatchdog = null; }
                 var q = playerQueue.slice();

@@ -559,6 +559,17 @@ a {
 
 #quiz-error { color: #f00; white-space: pre-wrap; }
 
+#mode-selector {
+    display: block;
+    margin: 0.75rem 0;
+    font-size: 0.9em;
+}
+
+.mode-btn {
+    display: inline-block;
+    margin: 0 0.25rem;
+}
+
 .master-admin-badge {
     border-color: #ff0;
     color: #ff0;
