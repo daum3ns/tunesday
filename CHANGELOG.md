@@ -29,7 +29,7 @@ _**The tunesday CLI and standalone browser player have been removed.**
 - **Stats**: tune of the week, play counts, ceremony attendance, quiz leaderboards.
 - **Master admin**: a violator of all team membership checks, with an
   all-teams dashboard.
-- **Email reminders**: teams are emailed (per member) if no tune lands on
+- **Email reminders**: only the ceremony winner is emailed if no tune lands on
   their Tunesday.
 - **Resume or cancel a ceremony**: an open ceremony (needle hanging) can be
   picked back up later, or cancelled by an admin.
