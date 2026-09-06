@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,10 @@ var templatesFS embed.FS
 
 //go:embed static/*
 var staticFS embed.FS
+
+// Version is the app version/commit, set at build time via -ldflags
+// "-X tunesday/tunesday.online/internal/web.Version=...". Falls back to "dev".
+var Version = "dev"
 
 // Deps bundles the services a web handler needs.
 type Deps struct {
@@ -51,9 +56,14 @@ type Deps struct {
 
 // Handler holds the web handlers and templates.
 type Handler struct {
-	tmpls map[string]*template.Template
-	cfg   *config.Config
-	deps  Deps
+	tmpls   map[string]*template.Template
+	cfg     *config.Config
+	deps    Deps
+	version string
+
+	// Pull-UP ceremony votes, keyed by ceremony token then voter userID.
+	pullVotesMu sync.Mutex
+	pullVotes   map[string]map[string]bool
 }
 
 // NewHandler creates a new web handler, parsing embedded templates.
@@ -74,7 +84,7 @@ func NewHandler(cfg *config.Config, deps Deps) (*Handler, error) {
 		}
 		tmpls[page] = tmpl
 	}
-	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps}, nil
+	return &Handler{tmpls: tmpls, cfg: cfg, deps: deps, version: Version}, nil
 }
 
 // StaticFiles returns an http.Handler for embedded static assets.
@@ -98,6 +108,9 @@ func (h *Handler) render(w http.ResponseWriter, r *http.Request, page string, da
 	}
 	if _, ok := data["HasPassword"]; !ok {
 		data["HasPassword"] = hasPassword(r)
+	}
+	if _, ok := data["Version"]; !ok {
+		data["Version"] = h.version
 	}
 	if q := r.URL.Query(); len(q) > 0 {
 		if msg := q.Get("ok"); msg != "" {

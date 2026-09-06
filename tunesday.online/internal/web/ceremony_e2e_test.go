@@ -366,7 +366,7 @@ func TestCeremonyEndToEnd(t *testing.T) {
 	}
 }
 
-func TestCeremonyNeedsTwoEligible(t *testing.T) {
+func TestCeremonyStartsWithOneEligible(t *testing.T) {
 	h, database, mailer := setupTestHandler(t)
 	defer database.Close()
 
@@ -383,12 +383,12 @@ func TestCeremonyNeedsTwoEligible(t *testing.T) {
 	})
 	res.Body.Close()
 
+	// A ceremony can now start even with only 1 eligible provider.
+	// The reveal gate (2+ in the room) ensures fairness at draw time.
 	res = admin.postForm(server, "/teams/solo-squad/ceremonies", url.Values{})
 	res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("expected dashboard render, got %d", res.StatusCode)
-	}
-	if !strings.Contains(res.Request.URL.RawQuery, "err=") {
-		t.Fatalf("expected error flash for <2 eligible, got %s", res.Request.URL.String())
+	finalPath := res.Request.URL.Path
+	if !strings.HasSuffix(finalPath, "/host") {
+		t.Fatalf("expected redirect to host page, got %s", finalPath)
 	}
 }

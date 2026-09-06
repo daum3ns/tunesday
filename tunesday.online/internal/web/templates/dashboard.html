@@ -8,18 +8,22 @@
 </div>
 
 <h3>The Ceremony</h3>
-{{if ge .EligibleCount 2}}
-<p>Everyone in the room is in play — except whoever provided the last tune. One needle drops. Only the Algorithm decides.</p>
+{{if .IsTunesday}}
+<p>It's <strong>happy Tunesday</strong>! Everyone in the room is in play. One needle drops. Only the Algorithm decides.</p>
+{{else}}
+<p>It's not your {{.TunesdayName}} yet — the needle only drops on your team's Tunesday ({{.TunesdayName}}, {{.TeamTimezone}}).</p>
+{{end}}
 {{if eq .Member.Role "admin"}}
 <form method="POST" action="/teams/{{.Team.Slug}}/ceremonies">
-    <button type="submit" class="terminal-btn big">▶ Start the Tunesday Roulette</button>
+    <button type="submit" class="terminal-btn big" {{if not .IsTunesday}}title="admin override: start outside Tunesday"{{end}}>▶ Start the Tunesday Roulette</button>
 </form>
-{{else}}
-<p class="muted">Only admins can start a ceremony.</p>
+{{if not .IsTunesday}}
+<form method="POST" action="/teams/{{.Team.Slug}}/ceremonies?override=1" class="inline-form">
+    <button type="submit" class="terminal-btn small">override day (admin)</button>
+</form>
 {{end}}
 {{else}}
-<p class="terminal-error">Need at least 2 eligible (assigned + active) providers to run a ceremony.</p>
-<p><a class="terminal-btn" href="/teams/{{.Team.Slug}}/members">Invite members</a></p>
+<p class="muted">Only admins can start a ceremony.</p>
 {{end}}
 
 <h3>Recent tunes</h3>
@@ -37,15 +41,39 @@
 {{if .CeremonyHistory}}
 <table class="terminal-table">
     <thead>
-    <tr><th>when</th><th>winner</th><th>tune</th><th>in the room</th></tr>
+    <tr><th>when</th><th>winner</th><th>tune</th><th>in the room</th>{{if eq .Member.Role "admin"}}<th></th>{{end}}</tr>
     </thead>
     <tbody>
     {{range .CeremonyHistory}}
     <tr>
         <td>{{.StartedAt.Format "2006-01-02"}}</td>
-        <td>{{if eq .Status "open"}}<span class="muted">needle still hanging</span>{{else if .WinnerName}}★ {{.WinnerName}}{{else}}<span class="muted">?</span>{{end}}</td>
-        <td>{{if .TuneTitle}}♪ {{.TuneTitle}}{{else if eq .Status "revealed"}}<span class="terminal-error">no tune registered!</span>{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>
+            {{if eq .Status "open"}}
+                <a class="terminal-btn small" href="/teams/{{$.Team.Slug}}/ceremonies/{{.Token}}">⏻ needle hanging — resume</a>
+            {{else if .WinnerName}}★ {{.WinnerName}}{{else}}<span class="muted">?</span>{{end}}
+        </td>
+        <td>
+            {{if .TuneTitle}}♪ {{.TuneTitle}}{{else if eq .Status "revealed"}}
+                <span class="terminal-error">no tune registered!</span>
+                {{if or (eq $.Member.ProviderID .WinnerProviderID) (eq $.Member.Role "admin")}}
+                <form method="POST" action="/teams/{{$.Team.Slug}}/ceremonies/{{.Token}}/tune" class="inline-form">
+                    <input type="url" name="link" required placeholder="https://www.youtube.com/watch?v=..." class="attach-input">
+                    <input type="hidden" name="from" value="dashboard">
+                    <button type="submit" class="terminal-btn small">provide your tune</button>
+                </form>
+                {{end}}
+            {{else}}<span class="muted">—</span>{{end}}
+        </td>
         <td>{{.PresentCount}}</td>
+        {{if eq $.Member.Role "admin"}}
+        <td>
+            {{if eq .Status "open"}}
+            <form method="POST" action="/teams/{{$.Team.Slug}}/ceremonies/{{.Token}}/cancel" class="inline-form">
+                <button type="submit" class="terminal-btn small" onclick="return confirm('Cancel this ceremony (needle back in its holder)?')">cancel</button>
+            </form>
+            {{end}}
+        </td>
+        {{end}}
     </tr>
     {{end}}
     </tbody>

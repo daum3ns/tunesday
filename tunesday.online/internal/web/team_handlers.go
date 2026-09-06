@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -222,6 +223,9 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	data["RecentTunes"] = recent
 	data["CeremonyHistory"] = ceremonies
 	data["SessionLink"] = h.cfg.BaseURL + "/teams/" + team.Slug + "/dashboard"
+	data["IsTunesday"] = team.IsTunesday(time.Now())
+	data["TunesdayName"] = dayName(team.TunesdayWeekday)
+	data["TeamTimezone"] = team.Timezone
 	h.render(w, r, "dashboard.html", data)
 }
 
@@ -394,7 +398,42 @@ func (h *Handler) MembersPage(w http.ResponseWriter, r *http.Request) {
 	data["PendingInvites"] = pending
 	data["Providers"] = providers
 	data["UnassignedSeats"] = unassigned
+	data["TeamTimezone"] = team.Timezone
+	data["TunesdayWeekday"] = team.TunesdayWeekday
+	data["TunesdayName"] = dayName(team.TunesdayWeekday)
+	data["Weekdays"] = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
 	h.render(w, r, "members.html", data)
+}
+
+// UpdateTeamSettings sets a team's timezone and Tunesday weekday.
+func (h *Handler) UpdateTeamSettings(w http.ResponseWriter, r *http.Request) {
+	team, _, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	back := "/teams/" + team.Slug + "/members"
+	if err := r.ParseForm(); err != nil {
+		redirectFlash(w, r, back, "err", "Invalid form")
+		return
+	}
+	timezone := strings.TrimSpace(r.FormValue("timezone"))
+	weekday, err := strconv.Atoi(r.FormValue("tunesday_weekday"))
+	if err != nil || weekday < 0 || weekday > 6 {
+		redirectFlash(w, r, back, "err", "Choose a valid weekday.")
+		return
+	}
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	if _, err := time.LoadLocation(timezone); err != nil {
+		redirectFlash(w, r, back, "err", "Unknown timezone: "+timezone)
+		return
+	}
+	if err := h.deps.Teams.UpdateTunesdaySettings(team.ID, timezone, weekday); err != nil {
+		redirectFlash(w, r, back, "err", "Could not save team settings.")
+		return
+	}
+	redirectFlash(w, r, back, "ok", "Team settings saved. Happy "+dayName(weekday)+"!")
 }
 
 // InviteMember sends an invitation email with a join link.

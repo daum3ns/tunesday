@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 
@@ -10,6 +11,7 @@ import (
 	"tunesday/tunesday.online/internal/email"
 	"tunesday/tunesday.online/internal/live"
 	"tunesday/tunesday.online/internal/radio"
+	"tunesday/tunesday.online/internal/reminder"
 	"tunesday/tunesday.online/internal/store"
 	"tunesday/tunesday.online/internal/stream"
 	"tunesday/tunesday.online/internal/web"
@@ -77,6 +79,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("web handlers: %v", err)
 	}
+
+	// No-tune reminder: after a team's Tunesday, email members if nobody
+	// registered a tune. Deduped per team+date via reminder_sent.
+	reminderCtx, cancelReminder := context.WithCancel(context.Background())
+	defer cancelReminder()
+	reminderSched := reminder.New(
+		deps.Teams, deps.Members, deps.Tunes,
+		store.NewReminderStore(database), deps.Email,
+		cfg.ReminderInterval,
+	)
+	go reminderSched.Run(reminderCtx)
 
 	log.Printf("tunesday.online listening on %s", cfg.ListenAddr)
 	if err := http.ListenAndServe(cfg.ListenAddr, wh.Router()); err != nil {

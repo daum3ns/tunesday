@@ -61,6 +61,7 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/teams/{slug}/ceremonies", h.StartCeremony)
 		r.Post("/teams/{slug}/ceremonies/{token}/reveal", h.CeremonyReveal)
 		r.Post("/teams/{slug}/ceremonies/{token}/tune", h.CeremonyAddTune)
+		r.Post("/teams/{slug}/ceremonies/{token}/cancel", h.CancelCeremony)
 
 		// The Quiz
 		r.Get("/teams/{slug}/quiz", h.QuizPage)
@@ -90,6 +91,7 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/teams/{slug}/members/{user}/role", h.SetMemberRole)
 		r.Post("/teams/{slug}/members/{user}/provider", h.SetMemberProvider)
 		r.Post("/teams/{slug}/members/{user}/remove", h.RemoveMember)
+		r.Post("/teams/{slug}/settings", h.UpdateTeamSettings)
 	})
 
 	return r

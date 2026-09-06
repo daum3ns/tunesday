@@ -25,23 +25,33 @@ type Config struct {
 	SMTPFrom string
 
 	MasterAdminEmail string
+
+	// TunesdayGateEnabled enforces that ceremonies only start on the team's
+	// configured Tunesday. Tests disable it to run ceremonies any day.
+	TunesdayGateEnabled bool
+
+	// ReminderInterval is how often the no-tune reminder scheduler wakes up to
+	// check whether a team's Tunesday ended without a tune.
+	ReminderInterval time.Duration
 }
 
 // Load reads configuration from environment variables.
 func Load() (*Config, error) {
 	cfg := &Config{
-		ListenAddr:      getEnv("TUNESDAY_ONLINE_LISTEN_ADDR", ":8080"),
-		BaseURL:         os.Getenv("TUNESDAY_ONLINE_BASE_URL"),
-		DataDir:         getEnv("TUNESDAY_ONLINE_DATA_DIR", "/data"),
-		SessionLifetime: getDuration("TUNESDAY_ONLINE_SESSION_LIFETIME", 30*24*time.Hour),
-		BcryptCost:      getInt("TUNESDAY_ONLINE_BCRYPT_COST", 10),
-		SessionSecure:   getBool("TUNESDAY_ONLINE_SESSION_SECURE", true),
-		SMTPHost:        os.Getenv("TUNESDAY_ONLINE_SMTP_HOST"),
-		SMTPPort:        getInt("TUNESDAY_ONLINE_SMTP_PORT", 587),
-		SMTPUser:        os.Getenv("TUNESDAY_ONLINE_SMTP_USER"),
-		SMTPPass:        os.Getenv("TUNESDAY_ONLINE_SMTP_PASS"),
-		SMTPFrom:        getEnv("TUNESDAY_ONLINE_SMTP_FROM", "noreply@tunesday.online"),
-		MasterAdminEmail: os.Getenv("TUNESDAY_MASTER_ADMIN_EMAIL"),
+		ListenAddr:          getEnv("TUNESDAY_ONLINE_LISTEN_ADDR", ":8080"),
+		BaseURL:             os.Getenv("TUNESDAY_ONLINE_BASE_URL"),
+		DataDir:             getEnv("TUNESDAY_ONLINE_DATA_DIR", "/data"),
+		SessionLifetime:     getDuration("TUNESDAY_ONLINE_SESSION_LIFETIME", 30*24*time.Hour),
+		BcryptCost:          getInt("TUNESDAY_ONLINE_BCRYPT_COST", 10),
+		SessionSecure:       getBool("TUNESDAY_ONLINE_SESSION_SECURE", true),
+		SMTPHost:            os.Getenv("TUNESDAY_ONLINE_SMTP_HOST"),
+		SMTPPort:            getInt("TUNESDAY_ONLINE_SMTP_PORT", 587),
+		SMTPUser:            os.Getenv("TUNESDAY_ONLINE_SMTP_USER"),
+		SMTPPass:            os.Getenv("TUNESDAY_ONLINE_SMTP_PASS"),
+		SMTPFrom:            getEnv("TUNESDAY_ONLINE_SMTP_FROM", "noreply@tunesday.online"),
+		MasterAdminEmail:    os.Getenv("TUNESDAY_MASTER_ADMIN_EMAIL"),
+		TunesdayGateEnabled: getBool("TUNESDAY_ONLINE_TUNESDAY_GATE", true),
+		ReminderInterval:    getDuration("TUNESDAY_ONLINE_REMINDER_INTERVAL", 30*time.Minute),
 	}
 
 	if cfg.BaseURL == "" {

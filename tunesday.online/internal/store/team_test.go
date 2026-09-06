@@ -109,7 +109,6 @@ func TestMemberAndProviderViews(t *testing.T) {
 	teams := NewTeamStore(database)
 	providers := NewProviderStore(database)
 	members := NewTeamMemberStore(database)
-	tunes := NewTuneStore(database)
 
 	u := createUser(t, database, "u1", "u1@example.com")
 	if err := teams.Create(&Team{ID: "ta", Name: "A", Slug: "a", AdminID: u.ID}); err != nil {
@@ -168,7 +167,7 @@ func TestMemberAndProviderViews(t *testing.T) {
 		t.Fatalf("GetByMagicToken failed: %v", err)
 	}
 
-	// Count recalculation + last submitter.
+	// Count recalculation.
 	if _, err := database.Exec(
 		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at)
 		 VALUES ('ta', 'x', 'https://youtu.be/aaaaaaaaaaa', 'aaaaaaaaaaa', ?, '2026-01-01 10:00:00')`,
@@ -189,10 +188,6 @@ func TestMemberAndProviderViews(t *testing.T) {
 	p, err := providers.GetByID(lukas.ID)
 	if err != nil || p.TuneCount != 2 {
 		t.Fatalf("expected tune_count 2, got %+v (%v)", p, err)
-	}
-	last, err := tunes.LastSubmitterProvider("ta")
-	if err != nil || last != "Lukas" {
-		t.Fatalf("expected Lukas last submitter, got %s (%v)", last, err)
 	}
 
 	// Delete rules.

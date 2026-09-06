@@ -96,5 +96,30 @@ roster still have no member → <a href="/teams/{{.Team.Slug}}/providers">roster
 </ul>
 <p class="muted">Magic links stay valid until you remove the member.</p>
 {{end}}
+
+<h3>Team settings</h3>
+<form method="POST" action="/teams/{{.Team.Slug}}/settings">
+    <label>Timezone (IANA name)</label>
+    <input type="text" name="timezone" value="{{.TeamTimezone}}" placeholder="UTC" list="tz-list">
+    <datalist id="tz-list">
+        <option value="UTC">
+        <option value="Europe/Berlin">
+        <option value="Europe/London">
+        <option value="Europe/Paris">
+        <option value="America/New_York">
+        <option value="America/Los_Angeles">
+        <option value="Asia/Tokyo">
+        <option value="Asia/Singapore">
+        <option value="Australia/Sydney">
+    </datalist>
+    <label>Tunesday</label>
+    <select name="tunesday_weekday">
+        {{range $i, $name := .Weekdays}}
+        <option value="{{$i}}" {{if eq $i $.TunesdayWeekday}}selected{{end}}>{{$name}}</option>
+        {{end}}
+    </select>
+    <p class="muted">The ceremony only opens on your Tunesday. Admin override is always available on the dashboard.</p>
+    <button type="submit" class="terminal-btn">save team settings</button>
+</form>
 {{end}}
 {{end}}

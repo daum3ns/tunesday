@@ -14,6 +14,9 @@
     var bigWinner = document.getElementById("big-winner");
     var tuneZone = document.getElementById("tune-zone");
     var completeInfo = document.getElementById("complete-info");
+    var pullupBtn = document.getElementById("pullup-btn");
+    var pullupZone = document.getElementById("pullup-zone");
+    var pullupStatus = document.getElementById("pullup-status");
     var sessionUrl = document.getElementById("session-url");
     var copyLink = document.getElementById("copy-link");
     var countdownEl = document.getElementById("countdown");
@@ -166,6 +169,35 @@
         else if (msg.type === "attendees") onAttendees(msg.payload);
         else if (msg.type === "reveal") runRoulette(msg.payload);
         else if (msg.type === "complete") showCompleted(msg.payload);
+        else if (msg.type === "pullup") onPullUp(msg.payload);
+        else if (msg.type === "reset") onReset();
+    }
+
+    function onPullUp(p) {
+        if (pullupStatus) {
+            pullupStatus.textContent = "pull-up votes: " + (p.votes || 0) + " / " +
+                (Math.floor((p.attendees || 0) / 2) + 1) + " needed (" + (p.attendees || 0) + " in the room)";
+        }
+    }
+
+    function onReset() {
+        revealed = false;
+        currentPool = [];
+        winnerZone.hidden = true;
+        completeInfo.hidden = true;
+        if (pullupBtn) pullupBtn.textContent = "⤴ Pull UP the needle";
+        if (pullupZone) pullupZone.hidden = true;
+        if (pullupStatus) pullupStatus.textContent = "";
+        if (tuneZone) tuneZone.hidden = true;
+        showReveal();
+        statusEl.textContent = "the needle hangs again. the room may re-roll.";
+    }
+
+    function showReveal() {
+        if (revealBtn) {
+            revealBtn.style.display = "";
+            if (hostHint) hostHint.style.display = "";
+        }
     }
 
     function applyState(st) {
@@ -176,36 +208,41 @@
         }
         if (st.status === "open") {
             if (revealBtn) setRevealEnabled(!!st.canReveal);
-            statusEl.textContent = roomMessage(st.inRoom || 0, st.poolPreview);
+            statusEl.textContent = roomMessage(st.inRoom || 0);
         } else {
             revealed = true;
             winnerZone.hidden = false;
             bigWinner.textContent = winnerBanner(st.winner || "?");
             statusEl.textContent = "the verdict is in.";
             if (st.youWin || st.canAddTune) tuneZone.hidden = !st.canAddTune;
+            if (st.status === "revealed") showPullUp(st.pullUpVotes || 0);
             if (st.status === "completed") showCompletedStatic(st);
             hideReveal();
         }
     }
 
-    function roomMessage(inRoom, pool) {
-        var base = inRoom + " in the room";
-        if (pool && pool.length) base += " · candidates: " + pool.join(", ");
-        return base;
+    function showPullUp(votes) {
+        if (!pullupZone) return;
+        pullupZone.hidden = false;
+        if (pullupStatus) pullupStatus.textContent = "pull-up votes: " + (votes || 0);
+    }
+
+    function roomMessage(inRoom) {
+        return inRoom + " in the room";
     }
 
     function onAttendees(p) {
         if (!revealed) currentPool = p.poolPreview || [];
         renderAttendees(p.attendees || []);
         if (revealBtn && !revealed) setRevealEnabled(!!p.revealReady);
-        if (!revealed) statusEl.textContent = roomMessage(p.inRoom || 0, p.poolPreview);
+        if (!revealed) statusEl.textContent = roomMessage(p.inRoom || 0);
     }
 
     function setRevealEnabled(on) {
         revealBtn.disabled = !on;
         hostHint.textContent = on
             ? "the room is charged. drop it."
-            : "need at least 2 eligible providers connected";
+            : "need at least 2 eligible providers in the room";
     }
 
     function renderAttendees(list) {
@@ -252,6 +289,13 @@
             }
             // the broadcast will carry the reveal to every screen
         });
+    });
+
+    if (pullupBtn) pullupBtn.addEventListener("click", function () {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "pullup" }));
+            pullupBtn.textContent = revealBtn ? "⤴ Pull UP (voted)" : "⤴ voted";
+        }
     });
 
     // The synchronized ridiculous part: winner is already locked server-side;
@@ -340,6 +384,7 @@
         if (myProvider && myProvider === winner) {
             tuneZone.hidden = false;
         }
+        showPullUp(0);
     }
 
     function showCompleted(payload) {

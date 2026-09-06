@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"net/http"
 	"sort"
@@ -25,6 +26,15 @@ const (
 	// goes out, so nobody can "un-drop" it.
 	ceremonyCountdownMs = 5000
 )
+
+// dayName maps a time.Weekday index to its display name (Tuesday=2).
+func dayName(weekday int) string {
+	names := []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
+	if weekday < 0 || weekday >= len(names) {
+		return "Tunesday"
+	}
+	return names[weekday]
+}
 
 var wsUpgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
@@ -51,6 +61,7 @@ type ceremonyState struct {
 	CanReveal   bool           `json:"canReveal"`
 	YouWin      bool           `json:"youWin"`
 	CanAddTune  bool           `json:"canAddTune"`
+	PullUpVotes int            `json:"pullUpVotes,omitempty"`
 }
 
 // StartCeremony creates a ceremony room, recording seed and pool for audit.
@@ -61,11 +72,16 @@ func (h *Handler) StartCeremony(w http.ResponseWriter, r *http.Request) {
 	}
 	back := "/teams/" + team.Slug + "/dashboard"
 
-	eligible, err := h.deps.Providers.ListEligibleByTeam(team.ID)
-	if err != nil || len(eligible) < 2 {
-		redirectFlash(w, r, back, "err", "A ceremony needs at least 2 eligible (assigned + active) providers.")
+	// The ceremony only opens on the team's Tunesday (admin can override).
+	// The gate is configurable (tests disable it to run any day).
+	override := r.URL.Query().Get("override") == "1"
+	if h.cfg.TunesdayGateEnabled && !team.IsTunesday(time.Now()) && !override {
+		redirectFlash(w, r, back, "err",
+			fmt.Sprintf("Not %s yet. The needle only drops on your team's Tunesday (admins can override).", dayName(team.TunesdayWeekday)))
 		return
 	}
+
+	eligible, _ := h.deps.Providers.ListEligibleByTeam(team.ID)
 
 	names := make([]string, 0, len(eligible))
 	for _, p := range eligible {
@@ -86,6 +102,32 @@ func (h *Handler) StartCeremony(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/teams/"+team.Slug+"/ceremonies/"+cer.Token+"/host", http.StatusSeeOther)
+}
+
+// CancelCeremony discards an open ceremony (needle still hanging) so the
+// team can start afresh. Admin-only.
+func (h *Handler) CancelCeremony(w http.ResponseWriter, r *http.Request) {
+	team, _, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	back := "/teams/" + team.Slug + "/dashboard"
+	token := chi.URLParam(r, "token")
+	cer, err := h.deps.Ceremonies.GetByToken(token)
+	if err != nil || cer == nil || cer.TeamID != team.ID {
+		redirectFlash(w, r, back, "err", "This ceremony room does not exist.")
+		return
+	}
+	if !cer.Revealed() {
+		if err := h.deps.Ceremonies.CancelByToken(token); err != nil {
+			redirectFlash(w, r, back, "err", "Could not cancel the ceremony: "+err.Error())
+			return
+		}
+		h.deps.Rooms.Forget(token)
+		redirectFlash(w, r, back, "ok", "Ceremony cancelled. The needle is back in its holder.")
+		return
+	}
+	redirectFlash(w, r, back, "err", "Only a ceremony with the needle still hanging can be cancelled.")
 }
 
 // loadCeremony resolves team (membership) and ceremony; returns ok=false if handled.
@@ -170,9 +212,80 @@ func (h *Handler) CeremonyWS(w http.ResponseWriter, r *http.Request) {
 		return conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
 	})
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
 			break
 		}
+		var m live.Message
+		if json.Unmarshal(msg, &m) != nil {
+			continue
+		}
+		if m.Type == "pullup" {
+			h.togglePullVote(cer, room, client)
+		}
+	}
+}
+
+// pullVoteCount returns how many attendees currently voted to pull up.
+func (h *Handler) pullVoteCount(token string) int {
+	h.pullVotesMu.Lock()
+	defer h.pullVotesMu.Unlock()
+	return len(h.pullVotes[token])
+}
+
+// togglePullVote records (or retracts) one attendee's pull-up vote and, when
+// more than half of the connected attendees vote, resets the ceremony back to
+// the hanging needle. Only applies while a winner is revealed and no tune has
+// been registered yet.
+func (h *Handler) togglePullVote(cer *store.Ceremony, room *live.Room, client *live.Client) {
+	// The ceremony passed into the WS handler is a snapshot from page load
+	// (before any reveal); the vote guard needs the live row.
+	fresh, err := h.deps.Ceremonies.GetByToken(cer.Token)
+	if err != nil || !fresh.Revealed() || fresh.Completed() {
+		return
+	}
+	attendees := room.Participants()
+	if len(attendees) < 1 {
+		return
+	}
+
+	h.pullVotesMu.Lock()
+	if h.pullVotes == nil {
+		h.pullVotes = map[string]map[string]bool{}
+	}
+	votes := h.pullVotes[cer.Token]
+	if votes == nil {
+		votes = map[string]bool{}
+	}
+	if votes[client.UserID()] {
+		delete(votes, client.UserID())
+	} else {
+		votes[client.UserID()] = true
+	}
+	h.pullVotes[cer.Token] = votes
+	voteCount := len(votes)
+	h.pullVotesMu.Unlock()
+
+	room.Broadcast("pullup", map[string]any{
+		"votes":     voteCount,
+		"attendees": len(attendees),
+	})
+
+	// More than half of the connected attendees demand a re-roll.
+	threshold := len(attendees)/2 + 1
+	if voteCount < threshold {
+		return
+	}
+
+	if err := h.deps.Ceremonies.ResetReveal(fresh.ID); err != nil {
+		return
+	}
+	h.pullVotesMu.Lock()
+	delete(h.pullVotes, cer.Token)
+	h.pullVotesMu.Unlock()
+	room.Broadcast("reset", map[string]any{})
+	if fresh, err = h.deps.Ceremonies.GetByToken(cer.Token); err == nil {
+		h.broadcastAttendees(fresh)
 	}
 }
 
@@ -228,6 +341,7 @@ func (h *Handler) ceremonyState(cer *store.Ceremony, viewerID string) ceremonySt
 		return st
 	}
 	st.Status = "revealed"
+	st.PullUpVotes = h.pullVoteCount(cer.Token)
 	winner, _ := h.deps.Providers.GetByID(cer.WinnerProviderID)
 	if winner != nil {
 		st.Winner = winner.Name
@@ -294,8 +408,9 @@ func (h *Handler) broadcastAttendees(cer *store.Ceremony) {
 }
 
 // revealPool derives the candidates from who is actually in the room:
-// connected members' providers minus the most recent submitter.
-// It also returns the full connected provider list (before exclusion).
+// every connected eligible provider is in play. There is no last-submitter
+// exclusion — streaks and repeat winners are handled by the team's Pull-UP
+// voting instead.
 func (h *Handler) revealPool(cer *store.Ceremony, live []string) (pool, connected []string) {
 	eligible, err := h.deps.Providers.ListEligibleByTeam(cer.TeamID)
 	if err != nil {
@@ -318,17 +433,7 @@ func (h *Handler) revealPool(cer *store.Ceremony, live []string) (pool, connecte
 		}
 	}
 	sort.Strings(connected)
-
-	last, _ := h.deps.Tunes.LastSubmitterProvider(cer.TeamID)
-	pool = make([]string, 0, len(connected))
-	for _, name := range connected {
-		if name != last {
-			pool = append(pool, name)
-		}
-	}
-	if len(pool) == 0 {
-		pool = connected
-	}
+	pool = append([]string(nil), connected...)
 	return pool, connected
 }
 
@@ -399,6 +504,9 @@ func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	back := "/teams/" + team.Slug + "/ceremonies/" + cer.Token
+	if r.FormValue("from") == "dashboard" {
+		back = "/teams/" + team.Slug + "/dashboard"
+	}
 	if !cer.Revealed() || cer.Completed() {
 		redirectFlash(w, r, back, "err", "The tune can only be added after the winner is revealed.")
 		return

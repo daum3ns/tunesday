@@ -107,6 +107,24 @@ func (s *Service) SendLoginLinkEmail(to string, links []TeamLink) error {
 	return s.send(to, subject, body)
 }
 
+// SendNoTuneReminderEmail nudges a member whose team had a Tunesday where no
+// one registered a tune. keeps the door open with the ceremony page link.
+func (s *Service) SendNoTuneReminderEmail(to, teamName, tunesdayDate string) error {
+	data := struct {
+		TeamName string
+		Date     string
+	}{
+		TeamName: teamName,
+		Date:     tunesdayDate,
+	}
+	subject := fmt.Sprintf("%s had a Tunesday with no tune", teamName)
+	body, err := render(noTuneTmpl, data)
+	if err != nil {
+		return err
+	}
+	return s.send(to, subject, body)
+}
+
 func render(tmpl *template.Template, data any) (string, error) {
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -150,4 +168,12 @@ var loginLinkTmpl = template.Must(template.New("loginlink").Parse(`Here are your
 {{range .Links}}- {{.TeamName}}: {{.URL}}
 {{end}}
 Each link logs you in directly. No passwords needed.
+`))
+
+var noTuneTmpl = template.Must(template.New("notune").Parse(`{{.TeamName}} had no tune registered on {{.Date}}.
+
+Head over to the team page and pick up the last ceremony: the winner can still
+provide the tune, and the reunion plays whatever was gathered.
+
+Log in at tunesday.online to see what is waiting.
 `))

@@ -142,7 +142,7 @@ func TestRevealRequiresTwoEligibleInRoom(t *testing.T) {
 	}
 }
 
-func TestLastSubmitterExcludedWhilePresent(t *testing.T) {
+func TestRevealPoolIncludesLastSubmitter(t *testing.T) {
 	h, database, mailer := setupTestHandler(t)
 	defer database.Close()
 
@@ -182,16 +182,31 @@ func TestLastSubmitterExcludedWhilePresent(t *testing.T) {
 	aConn.Close()
 	wConn.Close()
 
-	// Next ceremony: both in the room, but the last submitter is excluded —
-	// the other one must be picked.
+	// Next ceremony: both in the room. The last submitter stays in the pool —
+	// re-selection is handled by pull-up voting, not by excluding them.
 	token2 := startCeremony(t, server, admin, "spin-cycle")
 	a2 := dialRoom(t, wsBase, "spin-cycle", token2, admin, server)
-	w2 := dialRoom(t, wsBase, "spin-cycle", token2, waiter, server)
 	defer a2.Close()
+	w2 := dialRoom(t, wsBase, "spin-cycle", token2, waiter, server)
 	defer w2.Close()
 
-	second := revealWinner(t, server, admin, "spin-cycle", token2)
-	if second == winner {
-		t.Fatalf("last submitter %q should have been excluded, but won again", winner)
+	// The first worker receives an attendees broadcast (pool preview) when the
+	// second worker joins. Assert the last submitter is still a candidate.
+	msg := readUntil(t, a2, "attendees")
+	var payload struct {
+		PoolPreview []string `json:"poolPreview"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		t.Fatalf("decode attendees: %v", err)
+	}
+	found := false
+	for _, p := range payload.PoolPreview {
+		if p == winner {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("last submitter %q excluded from the pool; pool=%v", winner, payload.PoolPreview)
 	}
 }

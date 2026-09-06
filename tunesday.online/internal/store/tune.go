@@ -115,27 +115,22 @@ func (s *TuneStore) GetByID(id int64) (*TuneView, error) {
 	return &v, nil
 }
 
-// LastSubmitterProvider returns the provider name of the most recently
-// added tune, or "" when the team has no tunes.
-func (s *TuneStore) LastSubmitterProvider(teamID string) (string, error) {
-	var name string
-	err := s.db.QueryRow(
-		`SELECT p.name FROM tunes t JOIN providers p ON p.id = t.provider_id
-		 WHERE t.team_id = ? ORDER BY t.added_at DESC, t.id DESC LIMIT 1`,
-		teamID,
-	).Scan(&name)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", nil
-		}
-		return "", err
-	}
-	return name, nil
-}
-
 // CountByTeam returns how many tunes a team has.
 func (s *TuneStore) CountByTeam(teamID string) (int, error) {
 	var count int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM tunes WHERE team_id = ?`, teamID).Scan(&count)
+	return count, err
+}
+
+// CountAddedBetween counts tunes added in the half-open UTC interval
+// [start, end). Timestamps are stored in the canonical UTC layout, so
+// lexicographic comparison equals chronological order.
+func (s *TuneStore) CountAddedBetween(teamID, start, end string) (int, error) {
+	var count int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM tunes
+		 WHERE team_id = ? AND added_at >= ? AND added_at < ?`,
+		teamID, start, end,
+	).Scan(&count)
 	return count, err
 }

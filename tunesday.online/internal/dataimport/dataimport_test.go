@@ -153,12 +153,16 @@ func TestCreateTeamWithData(t *testing.T) {
 	}
 
 	tunes := store.NewTuneStore(database)
-	last, err := tunes.LastSubmitterProvider(res.TeamID)
+	all, err := tunes.ListAllByTeam(res.TeamID)
 	if err != nil {
-		t.Fatalf("last submitter: %v", err)
+		t.Fatalf("list tunes: %v", err)
 	}
-	if last != "Marcel" {
-		t.Fatalf("expected Marcel as latest submitter, got %s", last)
+	if len(all) == 0 {
+		t.Fatal("expected imported tunes")
+	}
+	last := all[len(all)-1]
+	if last.ProviderName != "Marcel" {
+		t.Fatalf("expected Marcel as latest submitter, got %s", last.ProviderName)
 	}
 }
 

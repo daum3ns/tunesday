@@ -24,12 +24,17 @@
 {{if .IsHost}}
 <div id="host-zone">
     <button id="reveal-btn" class="terminal-btn big" disabled>⬇ Drop the Needle</button>
-    <p class="muted" id="host-hint">need at least 2 spinning records</p>
+    <p class="muted" id="host-hint">need at least 2 eligible providers in the room</p>
 </div>
 {{end}}
 
 <div id="winner-zone" hidden>
     <pre id="big-winner"></pre>
+    <div id="pullup-zone" hidden>
+        <button id="pullup-btn" class="terminal-btn big">⤴ Pull UP the needle</button>
+        <p class="muted" id="pullup-status"></p>
+        <p class="muted">If more than half of the connected attendees pull up, the ceremony re-rolls.</p>
+    </div>
     <div id="tune-zone" hidden>
         <h3>The chosen record must provide the tune</h3>
         <form method="POST" action="{{.CeremonyPath}}/tune">

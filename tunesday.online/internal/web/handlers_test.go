@@ -47,15 +47,16 @@ func setupTestHandler(t *testing.T) (*Handler, *db.DB, *email.Service) {
 	t.Helper()
 
 	cfg := &config.Config{
-		BaseURL:       "https://tunesday.online",
-		BcryptCost:    4, // low cost for tests
-		SessionSecret: []byte("test-secret-test-secret-test-secret"),
-		SessionSecure: false,
-		SMTPHost:      "smtp.example.com",
-		SMTPPort:      587,
-		SMTPUser:      "test",
-		SMTPPass:      "test",
-		SMTPFrom:      "test@example.com",
+		BaseURL:             "https://tunesday.online",
+		BcryptCost:          4, // low cost for tests
+		SessionSecret:       []byte("test-secret-test-secret-test-secret"),
+		SessionSecure:       false,
+		SMTPHost:            "smtp.example.com",
+		SMTPPort:            587,
+		SMTPUser:            "test",
+		SMTPPass:            "test",
+		SMTPFrom:            "test@example.com",
+		TunesdayGateEnabled: false, // tests run ceremonies any day
 	}
 
 	database, err := db.Open(":memory:")

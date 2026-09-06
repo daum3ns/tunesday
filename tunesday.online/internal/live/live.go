@@ -38,6 +38,9 @@ func (c *Client) SendJSON(v any) error {
 	return c.conn.WriteJSON(v)
 }
 
+// UserID returns the identity this client joined with.
+func (c *Client) UserID() string { return c.userID }
+
 // CloseConnection closes the underlying connection.
 func (c *Client) CloseConnection() {
 	c.writeMu.Lock()

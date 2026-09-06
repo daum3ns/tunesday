@@ -166,14 +166,69 @@ func (s *CeremonyStore) MarkCompleted(id string, tuneID int64) error {
 	return err
 }
 
+// ResetReveal undoes a reveal (Pull-UP re-roll): the needle returns to the
+// hanging position so the host can drop it again. Only applies while the
+// winner has been drawn but no tune has been registered yet.
+func (s *CeremonyStore) ResetReveal(id string) error {
+	res, err := s.db.Exec(
+		`UPDATE ceremonies
+		 SET winner_provider_id = NULL, revealed_at = NULL, seed = NULL
+		 WHERE id = ? AND revealed_at IS NOT NULL AND completed_at IS NULL`,
+		id,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("ceremony cannot be reset")
+	}
+	return nil
+}
+
+// Cancel discards an open ceremony (needle still hanging) so a fresh one can
+// be started. Only applies while unrevealed. Marks it done without a winner.
+func (s *CeremonyStore) Cancel(id string) error {
+	res, err := s.db.Exec(
+		`UPDATE ceremonies SET completed_at = ?
+		 WHERE id = ? AND revealed_at IS NULL AND completed_at IS NULL`,
+		formatTime(time.Now()), id,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return errors.New("ceremony is not open")
+	}
+	return nil
+}
+
+// CancelByToken cancels an open ceremony identified by its room token.
+// It's a thin wrapper over Cancel for routes that address ceremonies by token.
+func (s *CeremonyStore) CancelByToken(token string) error {
+	c, err := s.GetByToken(token)
+	if err != nil || c == nil {
+		return err
+	}
+	return s.Cancel(c.ID)
+}
+
 // CeremonyHistoryItem is a compact ceremony row for the dashboard list.
 type CeremonyHistoryItem struct {
-	Token        string
-	StartedAt    time.Time
-	Status       string // open | revealed | completed
-	WinnerName   string
-	TuneTitle    string
-	PresentCount int
+	Token            string
+	StartedAt        time.Time
+	Status           string // open | revealed | completed
+	WinnerName       string
+	WinnerProviderID int64
+	TuneTitle        string
+	PresentCount     int
 }
 
 // ListRecentByTeam returns the newest ceremonies for a team with winner/tune/
@@ -181,7 +236,7 @@ type CeremonyHistoryItem struct {
 func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*CeremonyHistoryItem, error) {
 	rows, err := s.db.Query(
 		`SELECT c.token, c.started_at, c.revealed_at, c.completed_at,
-		        COALESCE(p.name, ''), COALESCE(t.title, ''),
+		        COALESCE(p.name, ''), COALESCE(p.id, 0), COALESCE(t.title, ''),
 		        (SELECT COUNT(*) FROM ceremony_attendees a WHERE a.ceremony_id = c.id)
 		 FROM ceremonies c
 		 LEFT JOIN providers p ON p.id = c.winner_provider_id
@@ -204,7 +259,7 @@ func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*CeremonyH
 			completedAt sql.NullString
 		)
 		if err := rows.Scan(&item.Token, &startedAt, &revealedAt, &completedAt,
-			&item.WinnerName, &item.TuneTitle, &item.PresentCount); err != nil {
+			&item.WinnerName, &item.WinnerProviderID, &item.TuneTitle, &item.PresentCount); err != nil {
 			return nil, err
 		}
 		if startedAt.Valid {
@@ -224,9 +279,9 @@ func (s *CeremonyStore) ListRecentByTeam(teamID string, limit int) ([]*CeremonyH
 
 // ProviderWinCount is one provider's ceremony win record.
 type ProviderWinCount struct {
-	ProviderName      string
-	Wins              int
-	TotalCeremonies   int // how many times they appeared in the pool
+	ProviderName    string
+	Wins            int
+	TotalCeremonies int // how many times they appeared in the pool
 }
 
 // WinCounts returns per-provider win counts for completed ceremonies in a team.
