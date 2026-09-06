@@ -86,7 +86,7 @@ func main() {
 	defer cancelReminder()
 	reminderSched := reminder.New(
 		deps.Teams, deps.Members, deps.Tunes,
-		store.NewReminderStore(database), deps.Email,
+		store.NewReminderStore(database), deps.Ceremonies, deps.Email,
 		cfg.ReminderInterval,
 	)
 	go reminderSched.Run(reminderCtx)

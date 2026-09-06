@@ -13,13 +13,14 @@ import (
 )
 
 // Scheduler periodically checks teams whose Tunesday ended without a tune and
-// emails each member once (deduplicated via the reminder_sent table).
+// emails the winner once (deduplicated via the reminder_sent table).
 type Scheduler struct {
-	teams     *store.TeamStore
-	members   *store.TeamMemberStore
-	tunes     *store.TuneStore
-	reminders *store.ReminderStore
-	mailer    *email.Service
+	teams      *store.TeamStore
+	members    *store.TeamMemberStore
+	tunes      *store.TuneStore
+	reminders  *store.ReminderStore
+	ceremonies *store.CeremonyStore
+	mailer     *email.Service
 
 	runEvery time.Duration
 	now      func() time.Time
@@ -28,17 +29,18 @@ type Scheduler struct {
 
 // New builds a reminder scheduler. now/logf override the defaults for tests.
 func New(teams *store.TeamStore, members *store.TeamMemberStore,
-	tunes *store.TuneStore, reminders *store.ReminderStore, mailer *email.Service,
-	runEvery time.Duration) *Scheduler {
+	tunes *store.TuneStore, reminders *store.ReminderStore, ceremonies *store.CeremonyStore,
+	mailer *email.Service, runEvery time.Duration) *Scheduler {
 	return &Scheduler{
-		teams:     teams,
-		members:   members,
-		tunes:     tunes,
-		reminders: reminders,
-		mailer:    mailer,
-		runEvery:  runEvery,
-		now:       time.Now,
-		logf:      log.Printf,
+		teams:      teams,
+		members:    members,
+		tunes:      tunes,
+		reminders:  reminders,
+		ceremonies: ceremonies,
+		mailer:     mailer,
+		runEvery:   runEvery,
+		now:        time.Now,
+		logf:       log.Printf,
 	}
 }
 
@@ -109,19 +111,45 @@ func (s *Scheduler) checkTeam(team *store.Team, now time.Time) {
 		return // the day was covered; nothing to nudge
 	}
 
+	// Get the first revealed ceremony on this date to find the winner
+	dateUTC := start.Format("2006-01-02")
+	ceremony, err := s.ceremonies.GetFirstRevealedByTeamOnDate(team.ID, dateUTC)
+	if err != nil {
+		s.logf("reminder: get ceremony for %s on %s: %v", team.Name, dateUTC, err)
+		return
+	}
+	if ceremony == nil {
+		return // no ceremony that day
+	}
+	if ceremony.WinnerProviderID == 0 {
+		return // ceremony not yet revealed
+	}
+
+	// Get the winner's member info to find their email
 	members, err := s.members.ListByTeam(team.ID)
 	if err != nil {
 		s.logf("reminder: list members for %s: %v", team.Name, err)
 		return
 	}
+
+	var winnerEmail string
 	for _, m := range members {
-		if err := s.mailer.SendNoTuneReminderEmail(m.Email, team.Name, date); err != nil {
-			s.logf("reminder: email to %s for %s failed: %v", m.Email, team.Name, err)
+		if m.ProviderID == ceremony.WinnerProviderID {
+			winnerEmail = m.Email
+			break
 		}
 	}
 
-	// Dedupe even when a relay failed for one recipient, so the next check
-	// does not re-spam everyone.
+	if winnerEmail == "" {
+		return // winner not found or no email
+	}
+
+	// Email only the winner
+	if err := s.mailer.SendNoTuneReminderEmail(winnerEmail, team.Name, date); err != nil {
+		s.logf("reminder: email to winner of %s for %s failed: %v", team.Name, date, err)
+	}
+
+	// Mark as sent to prevent re-sending
 	if err := s.reminders.Mark(team.ID, date); err != nil {
 		s.logf("reminder: mark %s for %s: %v", team.Name, date, err)
 	}

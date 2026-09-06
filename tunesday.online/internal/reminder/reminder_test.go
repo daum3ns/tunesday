@@ -15,6 +15,7 @@ type env struct {
 	members    *store.TeamMemberStore
 	tunes      *store.TuneStore
 	reminders  *store.ReminderStore
+	ceremonies *store.CeremonyStore
 	mailer     *email.Service
 	emails     *strings.Builder
 	db         *db.DB
@@ -35,6 +36,7 @@ func setup(t *testing.T) *env {
 	members := store.NewTeamMemberStore(database)
 	tunes := store.NewTuneStore(database)
 	reminders := store.NewReminderStore(database)
+	ceremonies := store.NewCeremonyStore(database)
 
 	users := store.NewUserStore(database)
 	u := &store.User{ID: "u1", Email: "admin@example.com", PasswordHash: "h",
@@ -63,7 +65,7 @@ func setup(t *testing.T) *env {
 		emails.WriteString(to + "\n" + subject + "\n")
 		return nil
 	}
-	return &env{teams, members, tunes, reminders, mailer, &emails, database, p.ID}
+	return &env{teams, members, tunes, reminders, ceremonies, mailer, &emails, database, p.ID}
 }
 
 // newScheduler returns a pre-wired Scheduler whose clock is frozen at the
@@ -77,17 +79,33 @@ func (e *env) newScheduler(at string) *Scheduler {
 	if err != nil {
 		panic(err)
 	}
-	s := New(e.teams, e.members, e.tunes, e.reminders, e.mailer, time.Hour)
+	s := New(e.teams, e.members, e.tunes, e.reminders, e.ceremonies, e.mailer, time.Hour)
 	s.SetClock(func() time.Time { return frozen })
 	return s
 }
 
 func TestReminderFiresAfterTunesdayAndDedupes(t *testing.T) {
 	e := setup(t)
+	// Create a revealed ceremony on Tuesday with the admin as winner
+	cer := &store.Ceremony{
+		ID:        "cer1",
+		TeamID:    "t1",
+		Token:     "token1",
+		StartedBy: "u1",
+		StartedAt: time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC), // Tuesday noon UTC
+		Pool:      []string{},
+	}
+	if err := e.ceremonies.Create(cer); err != nil {
+		t.Fatalf("create ceremony: %v", err)
+	}
+	if err := e.ceremonies.RecordReveal(cer.ID, 42, []string{}, e.providerID); err != nil {
+		t.Fatalf("record reveal: %v", err)
+	}
+
 	s := e.newScheduler("2026-09-09 06:00") // Wednesday — Tuesday ended, no tune
 	s.check()
 	if !strings.Contains(e.emails.String(), "admin@example.com") {
-		t.Fatalf("expected reminder email, got:\n%s", e.emails.String())
+		t.Fatalf("expected reminder email to winner, got:\n%s", e.emails.String())
 	}
 	s.check() // must be deduped via reminder_sent
 	if got := strings.Count(e.emails.String(), "admin@example.com"); got != 1 {
@@ -105,6 +123,22 @@ func TestReminderSkipsWhileStillTunesday(t *testing.T) {
 
 func TestReminderSkipsWhenTuneRegistered(t *testing.T) {
 	e := setup(t)
+	// Create a revealed ceremony
+	cer := &store.Ceremony{
+		ID:        "cer1",
+		TeamID:    "t1",
+		Token:     "token1",
+		StartedBy: "u1",
+		StartedAt: time.Date(2026, 9, 8, 12, 0, 0, 0, time.UTC),
+		Pool:      []string{},
+	}
+	if err := e.ceremonies.Create(cer); err != nil {
+		t.Fatalf("create ceremony: %v", err)
+	}
+	if err := e.ceremonies.RecordReveal(cer.ID, 42, []string{}, e.providerID); err != nil {
+		t.Fatalf("record reveal: %v", err)
+	}
+
 	// A tune added during Tuesday noon EDT = 16:00 UTC.
 	if _, err := e.db.Exec(
 		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at)

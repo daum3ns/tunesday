@@ -56,10 +56,14 @@ func (s *CeremonyStore) Create(c *Ceremony) error {
 	if c.AlgorithmVersion == "" {
 		c.AlgorithmVersion = "bottom-half-v1"
 	}
+	startedAt := c.StartedAt
+	if startedAt.IsZero() {
+		startedAt = time.Now()
+	}
 	_, err = s.db.Exec(
 		`INSERT INTO ceremonies (id, team_id, started_by, token, seed, pool_json, winner_provider_id, algorithm_version, started_at)
 		 VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
-		c.ID, c.TeamID, c.StartedBy, c.Token, c.Seed, string(poolJSON), c.AlgorithmVersion, formatTime(time.Now()),
+		c.ID, c.TeamID, c.StartedBy, c.Token, c.Seed, string(poolJSON), c.AlgorithmVersion, formatTime(startedAt),
 	)
 	return err
 }
@@ -342,6 +346,55 @@ func (s *CeremonyStore) Stats(teamID string) (CeremonyStats, error) {
 	}
 	return out, nil
 }
+
+// GetFirstRevealedByTeamOnDate returns the first revealed ceremony on a given
+// date (in UTC) with winner info, or nil if not found.
+// Used by the reminder system to identify who should be emailed.
+func (s *CeremonyStore) GetFirstRevealedByTeamOnDate(teamID string, date string) (*CeremonyHistoryItem, error) {
+	rows, err := s.db.Query(
+		`SELECT c.token, c.started_at, c.revealed_at, c.completed_at,
+		        COALESCE(p.name, ''), COALESCE(p.id, 0), COALESCE(t.title, ''),
+		        (SELECT COUNT(*) FROM ceremony_attendees a WHERE a.ceremony_id = c.id)
+		 FROM ceremonies c
+		 LEFT JOIN providers p ON p.id = c.winner_provider_id
+		 LEFT JOIN tunes t ON t.id = c.tune_id
+		 WHERE c.team_id = ? AND c.revealed_at IS NOT NULL
+		   AND DATE(c.started_at) = ?
+		 ORDER BY c.started_at ASC LIMIT 1`,
+		teamID, date,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, rows.Err()
+	}
+
+	var (
+		item        CeremonyHistoryItem
+		startedAt   sql.NullString
+		revealedAt  sql.NullString
+		completedAt sql.NullString
+	)
+	if err := rows.Scan(&item.Token, &startedAt, &revealedAt, &completedAt,
+		&item.WinnerName, &item.WinnerProviderID, &item.TuneTitle, &item.PresentCount); err != nil {
+		return nil, err
+	}
+	if startedAt.Valid {
+		item.StartedAt = parseTime(startedAt.String)
+	}
+	item.Status = "open"
+	if revealedAt.Valid {
+		item.Status = "revealed"
+	}
+	if completedAt.Valid {
+		item.Status = "completed"
+	}
+	return &item, nil
+}
+
 func (s *CeremonyStore) AddAttendee(ceremonyID, userID, alias string) error {
 	_, err := s.db.Exec(
 		`INSERT INTO ceremony_attendees (ceremony_id, user_id, alias) VALUES (?, ?, ?)
