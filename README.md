@@ -48,8 +48,8 @@ The ceremony is a livestream ritual, so the pool is whoever **actually shows up*
 (no skipping out on your sacred duty by simply not turning up):
 
 - Pool = eligible providers whose owners are **connected to the ceremony room**
-- The **most recent submitter** gets a polite (or not-so-polite) exclusion from the pool
-- A winner is picked **uniformly at random** from the remaining pool
+- No submitter is excluded — repeat winners are handled by the team's **Pull-UP** vote after a reveal
+- A winner is picked **uniformly at random** from the pool
 
 So yes: attendance matters. Elegance is preserved. Chaos is evenly distributed.
 

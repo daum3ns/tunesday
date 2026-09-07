@@ -444,8 +444,7 @@ func (h *Handler) sendState(client *live.Client, cer *store.Ceremony, viewerID s
 }
 
 // CeremonyReveal draws a uniform random winner from the providers present in
-// the room (excluding the most recent submitter). Seed and pool are recorded
-// at reveal time so the draw is reproducible from the ceremony row alone.
+// the room. Seed and pool are recorded at reveal time so the draw is
 func (h *Handler) CeremonyReveal(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	team, _, cer, ok := h.loadCeremony(w, r)
