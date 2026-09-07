@@ -3,6 +3,17 @@
 All notable changes to tunesday.online are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-09-07
+
+### Fixed
+- Docker build: correct COPY path for `scripts/backup.sh` (build context is repo root).
+- Footer version no longer shows a doubled `v` prefix (`vv1.0.0` → `v1.0.0`).
+- Add explicit DNS resolvers (8.8.8.8, 1.1.1.1) to Docker Compose to fix SMTP
+  hostname resolution on VPS hosts with non-standard DNS.
+
+### Changed
+- Deployment guide now includes firewall setup (ports 80/443) before first launch.
+
 ## [1.0.0] - 2026-09-06
 
 
@@ -47,4 +58,5 @@ _**The tunesday CLI and standalone browser player have been removed.**
 - Deployment is now a single web service in Docker behind Caddy; the
   Makefile builds only the server.
 
+[1.0.1]: https://github.com/daum3ns/tunesday/releases/tag/v1.0.1
 [1.0.0]: https://github.com/daum3ns/tunesday/releases/tag/v1.0.0

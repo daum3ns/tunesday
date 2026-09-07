@@ -32,6 +32,11 @@ curl -fsSL https://get.docker.com | sh
 # Install docker compose plugin
 apt install -y docker-compose-plugin
 
+# Open firewall ports for Caddy (Let's Encrypt ACME challenges + HTTPS)
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw reload
+
 # Verify
 docker --version
 docker compose version
