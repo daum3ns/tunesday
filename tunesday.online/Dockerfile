@@ -7,7 +7,8 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 go build -o server ./tunesday.online/cmd/server
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X tunesday/tunesday.online/internal/web.Version=${VERSION}" -o server ./tunesday.online/cmd/server
 
 FROM debian:bookworm-slim
 

@@ -1,6 +1,8 @@
 x-app-build: &app-build
   context: ..
   dockerfile: tunesday.online/Dockerfile
+  args:
+    VERSION: ${VERSION:-dev}
 
 services:
   tunesday:

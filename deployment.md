@@ -89,7 +89,7 @@ openssl rand -hex 32
 
 ```bash
 cd /opt/tunesday/tunesday.online
-docker compose up -d --build
+VERSION=$(git describe --tags --always --dirty) docker compose up -d --build
 ```
 
 This will:

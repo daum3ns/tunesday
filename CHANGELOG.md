@@ -3,6 +3,12 @@
 All notable changes to tunesday.online are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.2] - 2026-09-07
+
+### Fixed
+- Docker build now passes version tag via `-ldflags` so the footer shows the
+  actual release version instead of `dev`.
+
 ## [1.0.1] - 2026-09-07
 
 ### Fixed
@@ -58,5 +64,6 @@ _**The tunesday CLI and standalone browser player have been removed.**
 - Deployment is now a single web service in Docker behind Caddy; the
   Makefile builds only the server.
 
+[1.0.2]: https://github.com/daum3ns/tunesday/releases/tag/v1.0.2
 [1.0.1]: https://github.com/daum3ns/tunesday/releases/tag/v1.0.1
 [1.0.0]: https://github.com/daum3ns/tunesday/releases/tag/v1.0.0
