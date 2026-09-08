@@ -4,6 +4,8 @@
     var script = document.currentScript;
     var wsPath = script.getAttribute("data-ws");
     var revealPath = script.getAttribute("data-reveal");
+    // Derive team path from the WS path: /teams/{slug}/ceremonies/... → /teams/{slug}
+    var teamPath = wsPath.split("/ceremonies/")[0];
 
     var statusEl = document.getElementById("drum-status");
     var turntable = document.getElementById("turntable");
@@ -390,13 +392,27 @@
     function showCompleted(payload) {
         tuneZone.hidden = true;
         completeInfo.hidden = false;
-        completeInfo.textContent = "♪ registered: " + payload.title + " provided by " + payload.provider + ". Happy Tunesday!";
+        var text = "♪ registered: " + payload.title + " provided by " + payload.provider + ". Happy Tunesday!";
+        if (payload.tuneId) {
+            text += " ";
+            var link = '<a href="' + teamPath + '/radio?play=' + payload.tuneId + '">▶ play on radio</a>';
+            completeInfo.innerHTML = text + link;
+        } else {
+            completeInfo.textContent = text;
+        }
     }
 
     function showCompletedStatic(st) {
         if (st.tuneTitle) {
             completeInfo.hidden = false;
-            completeInfo.textContent = "♪ registered: " + st.tuneTitle;
+            var text = "♪ registered: " + st.tuneTitle;
+            if (st.tuneId) {
+                text += " ";
+                var link = '<a href="' + teamPath + '/radio?play=' + st.tuneId + '">▶ play on radio</a>';
+                completeInfo.innerHTML = text + link;
+            } else {
+                completeInfo.textContent = text;
+            }
         }
     }
 

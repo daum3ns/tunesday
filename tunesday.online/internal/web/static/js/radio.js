@@ -23,12 +23,41 @@
     var volIcon   = document.getElementById("radio-vol-icon");
 
     // Collect tunes from the playlist table in the DOM.
-    var tunes = [];
-    var rows = document.querySelectorAll(".playlist-row, tr[data-tune]");
-    for (var i = 0; i < rows.length; i++) {
-        var row = rows[i];
-        var id = parseInt(row.getAttribute("data-tune"), 10);
-        if (id) tunes.push(id);
+    function collectTunes() {
+        var out = [];
+        var rows = document.querySelectorAll("tr[data-tune]");
+        for (var i = 0; i < rows.length; i++) {
+            var id = parseInt(rows[i].getAttribute("data-tune"), 10);
+            if (id) out.push(id);
+        }
+        return out;
+    }
+    var tunes = collectTunes();
+
+    // ── Sort toggle (newest-first / oldest-first) ──
+
+    var sortDesc = false;
+    try { sortDesc = localStorage.getItem("radioSortDesc") === "1"; } catch (e) {}
+    if (sortDesc) reverseRows();
+
+    function reverseRows() {
+        var tbody = document.querySelector("table.terminal-table tbody");
+        if (!tbody) return;
+        var rows = Array.from(tbody.querySelectorAll("tr"));
+        for (var i = rows.length - 1; i >= 0; i--) {
+            tbody.appendChild(rows[i]);
+        }
+        tunes = collectTunes();
+    }
+
+    var sortToggle = document.getElementById("sort-toggle");
+    if (sortToggle) {
+        sortToggle.addEventListener("click", function () {
+            sortDesc = !sortDesc;
+            try { localStorage.setItem("radioSortDesc", sortDesc ? "1" : "0"); } catch (e) {}
+            reverseRows();
+            buildQueue(currentMode === "shuffled");
+        });
     }
 
     var queue = [];
@@ -335,4 +364,13 @@
     if (tunes.length > 0) buildQueue(false);
     initVolume();
     connect();
+
+    // Auto-play a tune if ?play=N is in the URL.
+    (function () {
+        var params = new URLSearchParams(location.search);
+        var playId = parseInt(params.get("play"), 10);
+        if (playId && tunes.indexOf(playId) !== -1) {
+            playTune(playId);
+        }
+    })();
 })();

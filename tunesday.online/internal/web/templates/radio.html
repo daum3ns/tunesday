@@ -31,7 +31,7 @@
 <h3>Playlist</h3>
 {{if .HasTunes}}
 <table class="terminal-table">
-    <thead><tr><th></th><th>title</th><th>provider</th></tr></thead>
+    <thead><tr><th></th><th>title</th><th>provider</th><th id="sort-toggle" style="cursor:pointer" title="toggle sort order">⇅</th></tr></thead>
     <tbody>
     {{range .Tunes}}
     <tr data-tune="{{.ID}}" data-yt="{{.YouTubeID}}" data-provider="{{.ProviderName}}" data-added="{{.AddedAt.Format "2006-01-02"}}">

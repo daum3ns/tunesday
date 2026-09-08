@@ -58,6 +58,7 @@ type ceremonyState struct {
 	PoolPreview []string       `json:"poolPreview,omitempty"`
 	Winner      string         `json:"winner,omitempty"`
 	TuneTitle   string         `json:"tuneTitle,omitempty"`
+	TuneID      int64          `json:"tuneId,omitempty"`
 	CanReveal   bool           `json:"canReveal"`
 	YouWin      bool           `json:"youWin"`
 	CanAddTune  bool           `json:"canAddTune"`
@@ -350,6 +351,7 @@ func (h *Handler) ceremonyState(cer *store.Ceremony, viewerID string) ceremonySt
 	if cer.Completed() {
 		st.Status = "completed"
 		if cer.TuneID != 0 {
+			st.TuneID = cer.TuneID
 			if tune, err := h.deps.Tunes.GetByID(cer.TuneID); err == nil && tune != nil {
 				st.TuneTitle = tune.Title
 			}
@@ -571,7 +573,7 @@ func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room := h.deps.Rooms.RoomFor(cer.Token)
-	room.Broadcast("complete", map[string]any{"title": title, "provider": winner.Name})
+	room.Broadcast("complete", map[string]any{"title": title, "provider": winner.Name, "tuneId": tuneID})
 
 	redirectFlash(w, r, back, "ok", "Tune registered. Happy Tunesday!")
 }

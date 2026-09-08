@@ -30,7 +30,7 @@
 {{if .RecentTunes}}
 <ul class="tune-list">
     {{range .RecentTunes}}
-    <li>♪ {{.Title}} <span class="muted">({{.ProviderName}}, {{.AddedAt.Format "2006-01-02"}})</span></li>
+    <li><a href="{{$.TeamPath}}/radio?play={{.ID}}" class="terminal-btn small" title="play on radio">▶</a> ♪ {{.Title}} <span class="muted">({{.ProviderName}}, {{.AddedAt.Format "2006-01-02"}})</span></li>
     {{end}}
 </ul>
 {{else}}

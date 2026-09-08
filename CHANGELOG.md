@@ -3,6 +3,16 @@
 All notable changes to tunesday.online are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **Play on radio from ceremony**: after a tune is registered, live ceremony
+  viewers get a "▶ play on radio" link that opens the radio with the tune loaded.
+- **Play buttons in recent tunes**: the dashboard's recent tunes list has a ▶
+  button per tune, navigating to the radio page with that track pre-loaded.
+- **Sortable playlist**: the radio playlist can be toggled between newest-first
+  and oldest-first via the ⇅ column header; the choice persists across visits.
+
 ## [1.0.2] - 2026-09-07
 
 ### Fixed
