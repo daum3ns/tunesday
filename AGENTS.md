@@ -40,9 +40,21 @@ internal/
 ## Testing quirks
 - `make test` always builds before testing and clears test cache.
 - Tests use `t.TempDir()` for temp files — no fixtures needed.
-- **All playback/stream tests require `yt-dlp` installed** — `NewYTDLP()` calls `Available()`.
+- **yt-dlp** is a runtime dependency: the server checks it at startup
+  (`NewYTDLP()` + `Available()`, warning only — falls back to iframe player).
+  Stream *tests* use a `fakeYTDLP` stub, so `make test`/CI need no yt-dlp.
+  Override the binary path with `TUNESDAY_ONLINE_YTDLP_PATH`.
 - Packages `auth`, `config`, `email`, `live` have **no test files**.
 - Web E2E tests spin up a real HTTP server on `127.0.0.1` with an in-memory SQLite DB.
+
+## Releases
+- Tagging a `v*` tag on `main` triggers the release workflow: CI gate → server
+  binary → `ghcr.io/daum3ns/tunesday:<tag>` → GitHub release. No `latest` tag is pushed.
+- **Stable tags** scrape the matching `## [X.Y.Z] - date` section from
+  `CHANGELOG.md` for release notes — move `[Unreleased]` into that header
+  before tagging, or the workflow fails.
+- **Pre-release tags** (`-rc`, `-beta`, `-pre`, e.g. `v1.0.4-rc1`) skip the
+  changelog and use GitHub-generated notes, and the release is marked prerelease.
 
 ## Known gotchas
 - Ceremony pool = **connected eligible attendees minus last submitter**, winner picked uniformly at random (`revealPool` in `ceremony_handlers.go`). The old bottom-half `SelectProvider` in `internal/core` was removed.

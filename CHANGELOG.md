@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Legacy era stats**: teams that imported a tunesday.json now see a
   "Before tunesday.online" section on the stats page showing pre-migration
   tune count, provider count, and date range.
+- **CI + release automation**: GitHub Actions runs the test suite on push
+  and PRs; a `v*` tag push now builds the server binary, publishes the
+  Docker image to GHCR, and creates a GitHub release with notes from the
+  changelog. Pre-release tags (`-rc`, `-beta`, `-pre`) get GitHub-generated
+  notes and no `latest` image tag.
 
 ### Fixed
 - **Radio play stats**: plays are now recorded when reported via WebSocket,

@@ -67,11 +67,24 @@ jobs:
 
   release-notes:
     runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.type.outputs.mode }}
     steps:
       - uses: actions/checkout@v4
 
+      - name: Determine release type
+        id: type
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$TAG" =~ -(rc|beta|pre)[0-9] ]]; then
+            echo "mode=prerelease" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=stable" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract changelog section for tag
-        id: extract
+        if: steps.type.outputs.mode == 'stable'
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -90,6 +103,7 @@ jobs:
           fi
 
       - name: Upload release notes artifact
+        if: steps.type.outputs.mode == 'stable'
         uses: actions/upload-artifact@v4
         with:
           name: release-notes
@@ -106,7 +120,9 @@ jobs:
           name: tunesday-binary
           path: build
 
-      - uses: actions/download-artifact@v4
+      - name: Download release notes
+        if: needs.release-notes.outputs.mode == 'stable'
+        uses: actions/download-artifact@v4
         with:
           name: release-notes
 
@@ -114,4 +130,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: build/tunesday.online
-          body_path: release-notes.md
+          body_path: ${{ needs.release-notes.outputs.mode == 'stable' && 'release-notes.md' || '' }}
+          generate_release_notes: ${{ needs.release-notes.outputs.mode == 'prerelease' }}
+          prerelease: ${{ needs.release-notes.outputs.mode == 'prerelease' }}
