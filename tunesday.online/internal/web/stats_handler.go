@@ -77,6 +77,31 @@ func (h *Handler) StatsPage(w http.ResponseWriter, r *http.Request) {
 	data["CeremonyTotal"] = ceremonyStats.TotalCeremonies
 	data["AvgAttendance"] = ceremonyStats.AvgAttendance
 
+	// Legacy era stats — tunes imported from tunesday.json before the team was created.
+	allTunes, err := h.deps.Tunes.ListAllByTeam(team.ID)
+	if err != nil {
+		log.Printf("stats: list tunes: %v", err)
+	}
+	var legacyTunes int
+	var legacyProviders = map[string]bool{}
+	var legacyEarliest time.Time
+	for _, t := range allTunes {
+		if t.AddedAt.Before(team.CreatedAt) {
+			legacyTunes++
+			legacyProviders[t.ProviderName] = true
+			if legacyEarliest.IsZero() || t.AddedAt.Before(legacyEarliest) {
+				legacyEarliest = t.AddedAt
+			}
+		}
+	}
+	data["HasLegacy"] = legacyTunes > 0
+	data["LegacyTunes"] = legacyTunes
+	data["LegacyProviders"] = len(legacyProviders)
+	if legacyTunes > 0 {
+		data["LegacyEarliest"] = legacyEarliest.Format("Jan 2006")
+		data["MigrationDate"] = team.CreatedAt.Format("Jan 2006")
+	}
+
 	// Quiz stats.
 	providerRecog, err := h.deps.Quiz.ProviderRecognition(team.ID)
 	if err != nil {

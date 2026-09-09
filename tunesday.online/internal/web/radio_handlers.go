@@ -98,6 +98,15 @@ func (h *Handler) RadioWS(w http.ResponseWriter, r *http.Request) {
 		case "now_playing":
 			room.SetNowPlaying(user.ID, msg.TuneID)
 			h.broadcastListeners(team.ID)
+			if msg.TuneID > 0 {
+				if tune, err := h.deps.Tunes.GetByID(msg.TuneID); err == nil && tune != nil && tune.TeamID == team.ID {
+					_ = h.deps.PlayStats.Record(&store.PlayStat{
+						TeamID: team.ID,
+						TuneID: msg.TuneID,
+						UserID: user.ID,
+					})
+				}
+			}
 		default:
 			log.Printf("radio ws: unknown message type %q", msg.Type)
 		}

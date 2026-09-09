@@ -65,6 +65,16 @@
 <p class="muted">No completed ceremonies yet.</p>
 {{end}}
 
+{{if .HasLegacy}}
+<h3>Before tunesday.online</h3>
+<p class="muted">These tunes predate this team's migration to tunesday.online on {{.MigrationDate}}.</p>
+<div class="stat-grid">
+    <div class="stat"><span class="stat-num">{{.LegacyTunes}}</span> tunes</div>
+    <div class="stat"><span class="stat-num">{{.LegacyProviders}}</span> providers</div>
+    <div class="stat">first tune {{.LegacyEarliest}}</div>
+</div>
+{{end}}
+
 <h3>Quiz</h3>
 
 {{if .ProviderRecognition}}

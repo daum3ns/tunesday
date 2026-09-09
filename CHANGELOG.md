@@ -12,6 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   button per tune, navigating to the radio page with that track pre-loaded.
 - **Sortable playlist**: the radio playlist can be toggled between newest-first
   and oldest-first via the ⇅ column header; the choice persists across visits.
+- **Legacy era stats**: teams that imported a tunesday.json now see a
+  "Before tunesday.online" section on the stats page showing pre-migration
+  tune count, provider count, and date range.
+
+### Fixed
+- **Radio play stats**: plays are now recorded when reported via WebSocket,
+  not just via the fallback POST endpoint. The stats page was perpetually
+  showing "0 total plays" because the browser client never called the POST.
 
 ## [1.0.2] - 2026-09-07
 
