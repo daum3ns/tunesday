@@ -1,13 +1,6 @@
-x-app-build: &app-build
-  context: ..
-  dockerfile: tunesday.online/Dockerfile
-  args:
-    VERSION: ${VERSION:-dev}
-
 services:
   tunesday:
-    image: tunesday-online:local
-    build: *app-build
+    image: ghcr.io/daum3ns/tunesday:${TUNESDAY_ONLINE_IMAGE_TAG:-v1.0.3}
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -32,8 +25,7 @@ services:
     restart: unless-stopped
 
   backup:
-    image: tunesday-online:local
-    build: *app-build
+    image: ghcr.io/daum3ns/tunesday:${TUNESDAY_ONLINE_IMAGE_TAG:-v1.0.3}
     volumes:
       - ./data:/data
     entrypoint: ["/bin/sh"]

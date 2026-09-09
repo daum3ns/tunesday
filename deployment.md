@@ -78,6 +78,7 @@ nano .env
 | `TUNESDAY_ONLINE_SMTP_PASS` | your SMTP password |
 | `TUNESDAY_ONLINE_SMTP_FROM` | `noreply@yourdomain.com` |
 | `TUNESDAY_MASTER_ADMIN_EMAIL` | your email (for master admin) |
+| `TUNESDAY_ONLINE_IMAGE_TAG` | `v1.0.3` (bump to the desired release tag) |
 
 Generate a session secret:
 
@@ -85,19 +86,24 @@ Generate a session secret:
 openssl rand -hex 32
 ```
 
-## Step 4: Build & Launch
+## Step 4: Deploy
 
 ```bash
 cd /opt/tunesday/tunesday.online
-VERSION=$(git describe --tags --always --dirty) docker compose up -d --build
+git pull                       # fetch latest compose/Caddyfile (config only)
+docker compose pull            # pull the published image from GHCR
+docker compose up -d
 ```
 
 This will:
-1. Build the Go binary in a multi-stage Docker build
-2. Install yt-dlp in the container
-3. Start the Go server on `127.0.0.1:8080`
-4. Start Caddy on ports 80/443
-5. Caddy auto-provisions a Let's Encrypt TLS cert
+1. Pull the **released** image `ghcr.io/daum3ns/tunesday:<tag>` from GHCR (public registry — no `docker login` needed) with the Go binary, yt-dlp, and the backup script preinstalled
+2. Start the Go server on `127.0.0.1:8080`
+3. Start Caddy on ports 80/443
+4. Caddy auto-provisions a Let's Encrypt TLS cert
+
+The image tag it pulls is `TUNESDAY_ONLINE_IMAGE_TAG` from `.env`
+(default `v1.0.3` if unset). The running version is always exactly that tag —
+you can see it in the page footer and via the `VERSION` build flag baked at release time.
 
 ## Step 5: Verify
 
@@ -133,11 +139,31 @@ tunesday.online: listening on :8080
 
 | Task | Command |
 |------|---------|
-| Update yt-dlp | `docker compose exec tunesday python3 -m pip install -U yt-dlp` |
 | View logs | `docker compose logs -f tunesday` |
 | Restart | `docker compose restart` |
-| Update code | `git pull && docker compose up -d --build` |
+| Update to a new release | `git pull` → set `TUNESDAY_ONLINE_IMAGE_TAG=vX.Y.Z` in `.env` → `docker compose pull && docker compose up -d` |
+| Roll back | set `TUNESDAY_ONLINE_IMAGE_TAG` back to the previous version → `docker compose pull && docker compose up -d` |
+| Update yt-dlp | automatically included in the next image release; in-container `pip install -U yt-dlp` is ephemeral and lost on recreate |
 | Backup DB | automatic daily via `backup` sidecar; manual: `docker compose exec backup /app/scripts/backup.sh`; view: `ls data/backups/` |
+
+### Deploying an update (run through)
+
+1. Stash any local edits: `git stash` (or commit on a branch)
+2. `git pull`
+3. Edit `.env`: `TUNESDAY_ONLINE_IMAGE_TAG=<new tag>`
+4. `docker compose pull && docker compose up -d`
+5. Verify in the browser that the footer shows the new tag
+
+> Rollback is just step 3 with the previous tag. No rebuilds ever happen on the VPS.
+
+### First cutover from a build-based install
+
+If the server previously ran locally-built images:
+
+```bash
+docker compose up -d --no-build   # recreate from the pulled image
+docker image prune -f             # drop old local layers
+```
 
 ## Backups & Restore
 
