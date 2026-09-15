@@ -90,7 +90,7 @@ jobs:
         run: |
           VERSION="${TAG#v}"
           awk -v v="$VERSION" '
-            $0 ~ "^## \\[" v "\\]" { found=1; print; next }
+            $0 ~ "^## \\[" v "\\]" { found=1; next }
             found && $0 ~ "^## \\[" { exit }
             found { print }
           ' CHANGELOG.md \
