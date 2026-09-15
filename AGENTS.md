@@ -57,7 +57,7 @@ internal/
   changelog and use GitHub-generated notes, and the release is marked prerelease.
 
 ## Known gotchas
-- Ceremony pool = **connected eligible attendees minus last submitter**, winner picked uniformly at random (`revealPool` in `ceremony_handlers.go`). The old bottom-half `SelectProvider` in `internal/core` was removed.
+- Ceremony pool = **connected eligible attendees**, no last-submitter exclusion — repeat winners are handled by the team's Pull-UP voting. Winner picked uniformly at random from the pool (`revealPool` in `ceremony_handlers.go`). The old bottom-half `SelectProvider` in `internal/core` was removed.
 - `requireMember` returns a synthetic admin `TeamMember` for master admin — downstream code must handle this.
 - Ceremony countdown is hardcoded to 5000ms (`ceremony_handlers.go`).
 - The `webhook.md` planned Teams notification feature was never implemented and has been removed.
