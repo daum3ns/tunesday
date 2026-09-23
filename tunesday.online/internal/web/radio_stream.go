@@ -26,15 +26,15 @@ func (h *Handler) RadioStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tune not found", http.StatusNotFound)
 		return
 	}
-	if tune.YouTubeID == "" {
-		http.Error(w, "tune has no video id", http.StatusUnprocessableEntity)
+	if tune.Link == "" || tune.Platform == "" {
+		http.Error(w, "tune has no playable link", http.StatusUnprocessableEntity)
 		return
 	}
 
-	info, err := h.deps.Streams.Resolve(r.Context(), tune.YouTubeID)
+	info, err := h.deps.Streams.Resolve(r.Context(), tune.Link)
 	if err != nil {
-		log.Printf("tunesday.online: stream resolve %s: %v", tune.YouTubeID, err)
-		h.invalidateStream(tune.YouTubeID)
+		log.Printf("tunesday.online: stream resolve %s: %v", tune.Link, err)
+		h.invalidateStream(tune.Link)
 		http.Error(w, "stream unavailable", http.StatusBadGateway)
 		return
 	}
@@ -48,8 +48,8 @@ func (h *Handler) RadioStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // invalidateStream drops a possibly-dead cached URL from the resolver cache.
-func (h *Handler) invalidateStream(videoID string) {
+func (h *Handler) invalidateStream(target string) {
 	if inv, ok := h.deps.Streams.(interface{ Invalidate(string) }); ok {
-		inv.Invalidate(videoID)
+		inv.Invalidate(target)
 	}
 }

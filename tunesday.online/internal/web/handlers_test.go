@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 
+	"tunesday/internal/playlist"
 	"tunesday/tunesday.online/internal/auth"
 	"tunesday/tunesday.online/internal/config"
 	"tunesday/tunesday.online/internal/db"
@@ -20,27 +21,15 @@ import (
 	"tunesday/tunesday.online/internal/stream"
 )
 
-// fakeYouTube is a deterministic playlist.TitleProvider for tests.
-type fakeYouTube struct{}
+// fakeMedia is a deterministic playlist.TitleProvider for tests.
+type fakeMedia struct{}
 
-func (fakeYouTube) NormalizeYouTubeID(raw string) (string, bool) {
-	if idx := strings.Index(raw, "v="); idx != -1 {
-		id := raw[idx+2:]
-		if amp := strings.IndexByte(id, '&'); amp != -1 {
-			id = id[:amp]
-		}
-		if len(id) >= 11 {
-			return id[:11], true
-		}
-	}
-	if strings.HasPrefix(raw, "https://youtu.be/") && len(raw) >= 26 {
-		return raw[17:28], true
-	}
-	return "", false
+func (fakeMedia) Normalize(raw string) (playlist.Media, bool) {
+	return playlist.Normalize(raw)
 }
 
-func (fakeYouTube) FetchTitle(_ context.Context, id string) (string, error) {
-	return "Fake Title " + id, nil
+func (fakeMedia) FetchTitle(_ context.Context, link string) (string, error) {
+	return "Fake Title " + link, nil
 }
 
 func setupTestHandler(t *testing.T) (*Handler, *db.DB, *email.Service) {
@@ -81,7 +70,7 @@ func setupTestHandler(t *testing.T) (*Handler, *db.DB, *email.Service) {
 		Rooms:         live.NewManager(),
 		Radio:         radio.NewManager(),
 		Streams:       &fakeStreamResolver{err: errors.New("no upstream configured")},
-		YT:            fakeYouTube{},
+		Media:         fakeMedia{},
 	}
 
 	h, err := NewHandler(cfg, deps)
@@ -293,4 +282,14 @@ func (f *fakeStreamResolver) stats() (calls, invalidates int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.calls, f.invalat
+}
+
+// capturingResolver records the last target handed to Resolve.
+type capturingResolver struct {
+	target *string
+}
+
+func (c *capturingResolver) Resolve(_ context.Context, target string) (stream.Info, error) {
+	*c.target = target
+	return stream.Info{URL: "https://cdn.example.com/a", MimeType: "audio/mpeg"}, nil
 }

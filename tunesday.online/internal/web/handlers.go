@@ -51,7 +51,7 @@ type Deps struct {
 	Rooms         *live.Manager
 	Radio         *radio.Manager
 	Streams       stream.Resolver
-	YT            playlist.TitleProvider
+	Media         playlist.TitleProvider
 }
 
 // Handler holds the web handlers and templates.

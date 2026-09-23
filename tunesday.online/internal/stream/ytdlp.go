@@ -14,7 +14,8 @@ import (
 
 // YTDLP resolves streams and titles by shelling out to yt-dlp — the very
 // extractor the CLI's mpv radio relies on via ytdl_hook. This guarantees the
-// web path inherits yt-dlp's ongoing maintenance against YouTube changes.
+// web path inherits yt-dlp's ongoing maintenance against upstream changes for
+// every supported platform (YouTube, SoundCloud, Bandcamp).
 //
 // It implements both stream.Resolver and playlist.TitleProvider.
 type YTDLP struct {
@@ -23,13 +24,11 @@ type YTDLP struct {
 	Bin string
 	// Timeout bounds each yt-dlp invocation.
 	Timeout time.Duration
-
-	norm *playlist.YouTube // pure URL normalisation, no network
 }
 
 // NewYTDLP builds the default extractor.
 func NewYTDLP() *YTDLP {
-	return &YTDLP{Timeout: 30 * time.Second, norm: playlist.NewYouTube()}
+	return &YTDLP{Timeout: 30 * time.Second}
 }
 
 func (y *YTDLP) bin() string {
@@ -75,32 +74,39 @@ func (y *YTDLP) run(ctx context.Context, args ...string) (string, error) {
 	return out, nil
 }
 
-// audioFormat prefers m4a (AAC — best browser support), then any audio.
-const audioFormat = "bestaudio[ext=m4a]/bestaudio/best"
+// audioFormat prefers progressive (non-HLS) streams because browsers cannot
+// decode application/vnd.apple.mpegurl. The !^=m3u8 clauses exclude
+// m3u8/m3u8_native/hls protocols; [acodec=aac] keeps Bandcamp's aac-hi ahead
+// of its ALAC-only (falac) m4a, and the [acodec=mp3] fallback covers
+// SoundCloud, whose AAC is HLS-only.
+const audioFormat = "bestaudio[protocol!^=m3u8][acodec=aac]" +
+	"/bestaudio[protocol!^=m3u8][ext=m4a][acodec!=alac]" +
+	"/bestaudio[protocol!^=m3u8][acodec=mp3]" +
+	"/bestaudio/best"
 
-// Resolve returns a direct audio stream URL for the video.
-func (y *YTDLP) Resolve(ctx context.Context, videoID string) (Info, error) {
-	out, err := y.run(ctx, "-g", "--no-playlist", "--no-warnings",
-		"-f", audioFormat, watchURL(videoID))
+// Resolve returns a direct audio stream URL for the canonical link.
+func (y *YTDLP) Resolve(ctx context.Context, target string) (Info, error) {
+	out, err := y.run(ctx, "--no-playlist", "--no-warnings",
+		"-f", audioFormat, "--print", "%(url)s|%(ext)s", target)
 	if err != nil {
 		return Info{}, err
 	}
-	line, _, _ := strings.Cut(out, "\n") // -g may print per-format lines
+	urlStr, ext, _ := strings.Cut(strings.TrimSpace(out), "|")
+	if urlStr == "" {
+		return Info{}, fmt.Errorf("yt-dlp: empty stream url")
+	}
 	return Info{
-		URL:       line,
-		MimeType:  mimeFromURL(line),
-		ExpiresAt: expireFromURL(line),
+		URL:       urlStr,
+		MimeType:  mimeForExt(ext),
+		ExpiresAt: expireFromURL(urlStr),
 	}, nil
 }
 
-// FetchTitle implements playlist.TitleProvider.
-func (y *YTDLP) FetchTitle(ctx context.Context, linkOrID string) (string, error) {
-	target := strings.TrimSpace(linkOrID)
-	if !strings.HasPrefix(target, "http") {
-		target = watchURL(target)
-	}
+// FetchTitle implements playlist.TitleProvider. The argument is always a
+// canonical link (the caller's responsibility).
+func (y *YTDLP) FetchTitle(ctx context.Context, link string) (string, error) {
 	out, err := y.run(ctx, "--no-playlist", "--no-warnings",
-		"--print", "%(title)s", target)
+		"--print", "%(title)s", strings.TrimSpace(link))
 	if err != nil {
 		return "", err
 	}
@@ -108,13 +114,9 @@ func (y *YTDLP) FetchTitle(ctx context.Context, linkOrID string) (string, error)
 	return strings.TrimSpace(title), nil
 }
 
-// NormalizeYouTubeID implements playlist.TitleProvider (pure string logic).
-func (y *YTDLP) NormalizeYouTubeID(raw string) (string, bool) {
-	return y.norm.NormalizeYouTubeID(raw)
-}
-
-func watchURL(videoID string) string {
-	return "https://www.youtube.com/watch?v=" + videoID
+// Normalize implements playlist.TitleProvider (pure string logic).
+func (y *YTDLP) Normalize(raw string) (playlist.Media, bool) {
+	return playlist.Normalize(raw)
 }
 
 // Available reports whether the configured yt-dlp binary can be found.

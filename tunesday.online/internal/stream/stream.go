@@ -8,7 +8,6 @@ package stream
 import (
 	"context"
 	"errors"
-	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,10 +17,11 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// Resolver turns a YouTube video ID into an audio stream. Production uses
-// Cached(YTDLP); tests substitute fakes at this seam.
+// Resolver turns a music target (a canonical platform link) into an audio
+// stream. Production uses Cached(YTDLP); tests substitute fakes at this seam.
+// The target is treated as an opaque cache key, not parsed here.
 type Resolver interface {
-	Resolve(ctx context.Context, videoID string) (Info, error)
+	Resolve(ctx context.Context, target string) (Info, error)
 }
 
 // Info is one playable audio stream.
@@ -71,27 +71,27 @@ func NewCached(inner Resolver, ttl time.Duration, maxEntries int) *Cached {
 }
 
 // Resolve returns a cached stream or fetches one, collapsing concurrent
-// lookups for the same video into a single upstream call.
-func (c *Cached) Resolve(ctx context.Context, videoID string) (Info, error) {
-	if videoID == "" {
-		return Info{}, errors.New("empty video id")
+// lookups for the same target into a single upstream call.
+func (c *Cached) Resolve(ctx context.Context, target string) (Info, error) {
+	if target == "" {
+		return Info{}, errors.New("empty target")
 	}
 
 	c.mu.Lock()
-	if e, ok := c.entries[videoID]; ok && c.fresh(e) {
+	if e, ok := c.entries[target]; ok && c.fresh(e) {
 		c.mu.Unlock()
 		return e.info, nil
 	}
 	c.mu.Unlock()
 
-	ch := c.group.DoChan(videoID, func() (any, error) {
+	ch := c.group.DoChan(target, func() (any, error) {
 		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
 		defer cancel()
-		info, err := c.inner.Resolve(fctx, videoID)
+		info, err := c.inner.Resolve(fctx, target)
 		if err != nil {
 			return nil, err
 		}
-		c.store(videoID, info)
+		c.store(target, info)
 		return info, nil
 	})
 
@@ -113,10 +113,10 @@ func (c *Cached) fresh(e entry) bool {
 	return c.now().Sub(e.fetchedAt) < c.ttl
 }
 
-func (c *Cached) store(videoID string, info Info) {
+func (c *Cached) store(target string, info Info) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[videoID] = entry{info: info, fetchedAt: c.now()}
+	c.entries[target] = entry{info: info, fetchedAt: c.now()}
 	if len(c.entries) <= c.max {
 		return
 	}
@@ -136,26 +136,25 @@ func (c *Cached) store(videoID string, info Info) {
 }
 
 // Invalidate drops a cached entry (used when the upstream URL fails).
-func (c *Cached) Invalidate(videoID string) {
+func (c *Cached) Invalidate(target string) {
 	c.mu.Lock()
-	delete(c.entries, videoID)
+	delete(c.entries, target)
 	c.mu.Unlock()
 }
 
-// mimeFromURL extracts a media type hint from a googlevideo-style URL
-// (`&mime=audio%2Fmp4`), defaulting to audio/mp4.
-func mimeFromURL(raw string) string {
-	if i := strings.Index(raw, "?"); i >= 0 {
-		for _, part := range strings.Split(raw[i+1:], "&") {
-			k, v, found := strings.Cut(part, "=")
-			if found && k == "mime" {
-				if mt, err := url.QueryUnescape(v); err == nil && mt != "" {
-					return mt
-				}
-			}
-		}
+// mimeForExt maps a yt-dlp `%(ext)s` value to an audio MIME type the browser
+// can play. Unknown extensions default to audio/mpeg.
+func mimeForExt(ext string) string {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case "m4a", "mp4":
+		return "audio/mp4"
+	case "opus", "ogg", "vorbis":
+		return "audio/ogg"
+	case "m3u8":
+		return "application/vnd.apple.mpegurl"
+	default: // mp3 and anything unknown
+		return "audio/mpeg"
 	}
-	return "audio/mp4"
 }
 
 // expireFromURL extracts the signed expiry (`&expire=1712345678`), if any.

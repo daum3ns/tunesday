@@ -15,6 +15,7 @@ type Tune struct {
 	Title      string
 	Link       string
 	YouTubeID  string
+	Platform   string
 	ProviderID int64
 	AddedAt    time.Time
 }
@@ -38,7 +39,7 @@ func NewTuneStore(database *db.DB) *TuneStore {
 // ListRecentByTeam returns the newest tunes for a team.
 func (s *TuneStore) ListRecentByTeam(teamID string, limit int) ([]*TuneView, error) {
 	rows, err := s.db.Query(
-		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.provider_id, t.added_at, p.name
+		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.platform, t.provider_id, t.added_at, p.name
 		 FROM tunes t JOIN providers p ON p.id = t.provider_id
 		 WHERE t.team_id = ?
 		 ORDER BY t.added_at DESC LIMIT ?`,
@@ -53,7 +54,7 @@ func (s *TuneStore) ListRecentByTeam(teamID string, limit int) ([]*TuneView, err
 	for rows.Next() {
 		var v TuneView
 		var addedAt sql.NullString
-		if err := rows.Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID,
+		if err := rows.Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID, &v.Platform,
 			&v.ProviderID, &addedAt, &v.ProviderName); err != nil {
 			return nil, err
 		}
@@ -68,7 +69,7 @@ func (s *TuneStore) ListRecentByTeam(teamID string, limit int) ([]*TuneView, err
 // ListAllByTeam returns every tune of a team in chronological order.
 func (s *TuneStore) ListAllByTeam(teamID string) ([]*TuneView, error) {
 	rows, err := s.db.Query(
-		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.provider_id, t.added_at, p.name
+		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.platform, t.provider_id, t.added_at, p.name
 		 FROM tunes t JOIN providers p ON p.id = t.provider_id
 		 WHERE t.team_id = ?
 		 ORDER BY t.added_at, t.id`,
@@ -83,7 +84,7 @@ func (s *TuneStore) ListAllByTeam(teamID string) ([]*TuneView, error) {
 	for rows.Next() {
 		var v TuneView
 		var addedAt sql.NullString
-		if err := rows.Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID,
+		if err := rows.Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID, &v.Platform,
 			&v.ProviderID, &addedAt, &v.ProviderName); err != nil {
 			return nil, err
 		}
@@ -100,9 +101,9 @@ func (s *TuneStore) GetByID(id int64) (*TuneView, error) {
 	var v TuneView
 	var addedAt sql.NullString
 	err := s.db.QueryRow(
-		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.provider_id, t.added_at, p.name
+		`SELECT t.id, t.team_id, t.title, t.link, t.youtube_id, t.platform, t.provider_id, t.added_at, p.name
 		 FROM tunes t JOIN providers p ON p.id = t.provider_id WHERE t.id = ?`, id,
-	).Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID, &v.ProviderID, &addedAt, &v.ProviderName)
+	).Scan(&v.ID, &v.TeamID, &v.Title, &v.Link, &v.YouTubeID, &v.Platform, &v.ProviderID, &addedAt, &v.ProviderName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
