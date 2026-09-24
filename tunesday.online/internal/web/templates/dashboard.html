@@ -27,6 +27,29 @@
 {{end}}
 
 <h3>Recent tunes</h3>
+{{if eq .Member.Role "admin"}}
+<button type="button" id="add-tune-btn" class="terminal-btn small" style="margin-bottom: 0.5em;">＋ add tune</button>
+
+<dialog id="add-tune-dialog" aria-labelledby="add-tune-title">
+    <p id="add-tune-title"><strong>Add a tune</strong> <span class="muted">(manual — outside the ceremony)</span></p>
+    <p class="muted">Use this when your team picked a tune by hand and it still needs to land on the list.</p>
+    <form method="POST" action="{{.TeamPath}}/tunes">
+        <label>Link</label>
+        <input type="url" name="link" required class="attach-input" style="width: 100%;" placeholder="https://... (YouTube, SoundCloud, Bandcamp)">
+        <label>Who provided it?</label>
+        <select name="provider_id" required class="attach-input" style="width: 100%;">
+            <option value="" disabled selected>choose a provider</option>
+            {{range .AddProviders}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+        </select>
+        <label>Date <span class="muted">(defaults to today)</span></label>
+        <input type="date" name="added_on" max="{{.Today}}" value="{{.Today}}" class="attach-input" style="width: 100%;">
+        <div class="dialog-actions">
+            <button type="submit" class="terminal-btn small">add tune</button>
+            <button type="button" id="add-tune-close" class="terminal-btn small">cancel</button>
+        </div>
+    </form>
+</dialog>
+{{end}}
 {{if .RecentTunes}}
 <ul class="tune-list">
     {{range .RecentTunes}}
@@ -104,4 +127,27 @@
     <input type="password" name="password_confirm" minlength="8" required>
     <button type="submit" class="terminal-btn">Save password</button>
 </form>
+
+<script>
+(function() {
+    var btn = document.getElementById('add-tune-btn');
+    var dialog = document.getElementById('add-tune-dialog');
+    if (!btn || !dialog || typeof dialog.showModal !== 'function') return;
+
+    btn.addEventListener('click', function() {
+        dialog.showModal();
+    });
+    var close = document.getElementById('add-tune-close');
+    if (close) {
+        close.addEventListener('click', function() {
+            dialog.close();
+        });
+    }
+    dialog.addEventListener('click', function(e) {
+        if (e.target === dialog) {
+            dialog.close();
+        }
+    });
+})();
+</script>
 {{end}}

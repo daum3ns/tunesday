@@ -3,10 +3,12 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -496,6 +498,101 @@ func (h *Handler) CeremonyReveal(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "winner": provider.Name})
 }
 
+// errUnsupportedLink signals a tune link that is not on an allowlisted platform.
+var errUnsupportedLink = errors.New("unsupported link")
+
+// addTuneToTeam normalizes a link, fetches its title, stores the tune and
+// refreshes provider counts. It is shared by the ceremony winner flow and the
+// admin's manual add form.
+func (h *Handler) addTuneToTeam(ctx context.Context, teamID string, providerID int64, link string, addedAt time.Time) (int64, error) {
+	pl, ok := h.deps.Media.Normalize(link)
+	if !ok {
+		return 0, errUnsupportedLink
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	title, err := h.deps.Media.FetchTitle(ctx, pl.URL)
+	if err != nil {
+		return 0, fmt.Errorf("could not fetch the title: %w", err)
+	}
+
+	res, err := h.deps.DB.Exec(
+		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at, platform) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		teamID, title, pl.URL, pl.ID, providerID, store.FormatTime(addedAt), pl.Platform,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("could not save the tune: %w", err)
+	}
+	tuneID, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("tune saved, but could not be linked: %w", err)
+	}
+	if err := h.deps.Providers.RecalculateCounts(teamID); err != nil {
+		return 0, fmt.Errorf("tune saved, but counts need a refresh: %w", err)
+	}
+	return tuneID, nil
+}
+
+// tuneAddErrorMessage renders a human flash for an addTuneToTeam error.
+func tuneAddErrorMessage(err error) string {
+	if errors.Is(err, errUnsupportedLink) {
+		return "Unsupported link — use YouTube, SoundCloud, or Bandcamp."
+	}
+	return err.Error()
+}
+
+// ManualAddTune lets an admin register a tune outside any ceremony — e.g. after
+// the team fell back to a manual selection while the admin was away. The
+// provider is chosen explicitly in the form, and the tune can be backdated to
+// the day it was picked.
+func (h *Handler) ManualAddTune(w http.ResponseWriter, r *http.Request) {
+	team, _, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	back := "/teams/" + team.Slug + "/dashboard"
+
+	if err := r.ParseForm(); err != nil {
+		redirectFlash(w, r, back, "err", "Invalid form")
+		return
+	}
+	link := strings.TrimSpace(r.FormValue("link"))
+	if link == "" {
+		redirectFlash(w, r, back, "err", "Paste a YouTube, SoundCloud, or Bandcamp link please.")
+		return
+	}
+
+	addedAt := time.Now()
+	if raw := strings.TrimSpace(r.FormValue("added_on")); raw != "" {
+		t, err := time.Parse("2006-01-02", raw)
+		if err != nil {
+			redirectFlash(w, r, back, "err", "Invalid date.")
+			return
+		}
+		// Store at a neutral noon UTC so the recorded date survives any
+		// timezone round-trip exactly as picked.
+		addedAt = time.Date(t.Year(), t.Month(), t.Day(), 12, 0, 0, 0, time.UTC)
+	}
+
+	providerID, err := strconv.ParseInt(r.FormValue("provider_id"), 10, 64)
+	if err != nil {
+		redirectFlash(w, r, back, "err", "Invalid provider.")
+		return
+	}
+	provider, err := h.deps.Providers.GetByID(providerID)
+	if err != nil || provider == nil || provider.TeamID != team.ID {
+		redirectFlash(w, r, back, "err", "Invalid provider.")
+		return
+	}
+
+	if _, err := h.addTuneToTeam(r.Context(), team.ID, provider.ID, link, addedAt); err != nil {
+		redirectFlash(w, r, back, "err", tuneAddErrorMessage(err))
+		return
+	}
+	redirectFlash(w, r, back, "ok", "Tune added. Happy Tunesday!")
+}
+
 // CeremonyAddTune lets the winner (or an admin) register today's tune.
 func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
@@ -534,35 +631,10 @@ func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 		redirectFlash(w, r, back, "err", "Paste a YouTube, SoundCloud, or Bandcamp link please.")
 		return
 	}
-	pl, ok := h.deps.Media.Normalize(link)
-	if !ok {
-		redirectFlash(w, r, back, "err", "Unsupported link — use YouTube, SoundCloud, or Bandcamp.")
-		return
-	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
-	defer cancel()
-	title, err := h.deps.Media.FetchTitle(ctx, pl.URL)
+	tuneID, err := h.addTuneToTeam(r.Context(), team.ID, winner.ID, link, time.Now())
 	if err != nil {
-		redirectFlash(w, r, back, "err", "Could not fetch the title: "+err.Error())
-		return
-	}
-
-	res, err := h.deps.DB.Exec(
-		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at, platform) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		team.ID, title, pl.URL, pl.ID, winner.ID, store.FormatTime(time.Now()), pl.Platform,
-	)
-	if err != nil {
-		redirectFlash(w, r, back, "err", "Could not save the tune.")
-		return
-	}
-	tuneID, err := res.LastInsertId()
-	if err != nil {
-		redirectFlash(w, r, back, "err", "Tune saved, but could not be linked.")
-		return
-	}
-	if err := h.deps.Providers.RecalculateCounts(team.ID); err != nil {
-		redirectFlash(w, r, back, "err", "Tune saved, but counts need a refresh.")
+		redirectFlash(w, r, back, "err", tuneAddErrorMessage(err))
 		return
 	}
 	if err := h.deps.Ceremonies.MarkCompleted(cer.ID, tuneID); err != nil {
@@ -571,7 +643,13 @@ func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room := h.deps.Rooms.RoomFor(cer.Token)
-	room.Broadcast("complete", map[string]any{"title": title, "provider": winner.Name, "tuneId": tuneID})
+	tune, _ := h.deps.Tunes.GetByID(tuneID)
+	title := ""
+	provider := winner.Name
+	if tune != nil {
+		title = tune.Title
+	}
+	room.Broadcast("complete", map[string]any{"title": title, "provider": provider, "tuneId": tuneID})
 
 	redirectFlash(w, r, back, "ok", "Tune registered. Happy Tunesday!")
 }

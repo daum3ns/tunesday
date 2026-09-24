@@ -195,6 +195,11 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 		redirectFlash(w, r, "/teams/"+team.Slug+"/dashboard", "err", "Something went wrong")
 		return
 	}
+	allProviders, err := h.deps.Providers.ListByTeam(team.ID)
+	if err != nil {
+		redirectFlash(w, r, "/teams/"+team.Slug+"/dashboard", "err", "Something went wrong")
+		return
+	}
 	membersList, err := h.deps.Members.ListByTeam(team.ID)
 	if err != nil {
 		redirectFlash(w, r, "/teams/"+team.Slug+"/dashboard", "err", "Something went wrong")
@@ -221,6 +226,8 @@ func (h *Handler) Dashboard(w http.ResponseWriter, r *http.Request) {
 	data["MemberCount"] = len(membersList)
 	data["TuneCount"] = tuneCount
 	data["RecentTunes"] = recent
+	data["AddProviders"] = allProviders
+	data["Today"] = time.Now().Format("2006-01-02")
 	data["CeremonyHistory"] = ceremonies
 	data["SessionLink"] = h.cfg.BaseURL + "/teams/" + team.Slug + "/dashboard"
 	data["IsTunesday"] = team.IsTunesday(time.Now())

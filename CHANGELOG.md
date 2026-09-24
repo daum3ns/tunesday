@@ -12,6 +12,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   nothing is stored.
 - A `tunes.platform` column tracks the source platform; radio streaming and
   the guard clause are driven by it rather than by `youtube_id`.
+- **Manual tune add**: admins can register a tune outside any ceremony from
+  the dashboard "Recent tunes" section, choosing which provider it is
+  attributed to — for the fallback when the team picked a tune by hand. The
+  entry can be backdated to the day it was actually picked (defaults to
+  today).
 
 ### Changed
 - Title fetching and stream resolution now go through a single `playlist.Normalize`

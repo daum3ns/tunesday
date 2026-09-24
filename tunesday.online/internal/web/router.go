@@ -87,6 +87,7 @@ func (h *Handler) Router() http.Handler {
 		r.Post("/teams/{slug}/providers/{id}/rename", h.RenameProvider)
 		r.Post("/teams/{slug}/providers/{id}/toggle", h.ToggleProvider)
 		r.Post("/teams/{slug}/providers/{id}/delete", h.DeleteProvider)
+		r.Post("/teams/{slug}/tunes", h.ManualAddTune)
 		r.Post("/teams/{slug}/members", h.InviteMember)
 		r.Post("/teams/{slug}/members/{user}/role", h.SetMemberRole)
 		r.Post("/teams/{slug}/members/{user}/provider", h.SetMemberProvider)

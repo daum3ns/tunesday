@@ -64,6 +64,49 @@ code {
     margin-bottom: 0.75rem;
 }
 
+dialog {
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    font-family: inherit;
+    font-size: clamp(11px, 1.8vw, 15px);
+    line-height: 1.5;
+    padding: 1.5rem 1.25rem;
+    max-width: 500px;
+    width: 92%;
+    margin: auto;
+}
+
+dialog::backdrop {
+    background: rgba(0, 0, 0, 0.75);
+}
+
+dialog p {
+    margin-bottom: 0.75rem;
+}
+
+dialog label {
+    display: block;
+    margin-top: 0.75rem;
+    margin-bottom: 0.25rem;
+}
+
+dialog input,
+dialog select {
+    background: #000;
+    color: #0f0;
+    border: 1px solid #0f0;
+    font-family: inherit;
+    padding: 0.4rem 0.5rem;
+}
+
+.dialog-actions {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    margin-top: 1rem;
+}
+
 .terminal-nav {
     display: flex;
     gap: 0.4rem;
