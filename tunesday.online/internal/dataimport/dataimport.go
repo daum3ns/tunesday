@@ -12,7 +12,6 @@ import (
 	"github.com/google/uuid"
 
 	"tunesday/internal/core"
-	"tunesday/internal/playlist"
 	"tunesday/tunesday.online/internal/db"
 	"tunesday/tunesday.online/internal/store"
 )
@@ -78,7 +77,6 @@ func CreateTeam(database *db.DB, in CreateTeamInput) (*CreateTeamResult, error) 
 
 	res := &CreateTeamResult{TeamID: teamID}
 	providerIDs := map[string]int64{}
-	yt := playlist.NewYouTube()
 
 	ensureProvider := func(name string, disabled bool) error {
 		if _, ok := providerIDs[name]; ok {
@@ -119,7 +117,7 @@ func CreateTeam(database *db.DB, in CreateTeamInput) (*CreateTeamResult, error) 
 			if err := ensureProvider(t.Provider, false); err != nil {
 				return nil, err
 			}
-			if err := insertTuneTx(tx, teamID, providerIDs[t.Provider], t, yt); err != nil {
+			if err := insertTuneTx(tx, teamID, providerIDs[t.Provider], t); err != nil {
 				return nil, fmt.Errorf("insert tune: %w", err)
 			}
 			res.TunesInserted++

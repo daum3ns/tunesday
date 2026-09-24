@@ -3,6 +3,35 @@
 All notable changes to tunesday.online are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- **SoundCloud & Bandcamp tune support**: the ceremony/dashboard link input
+  now accepts SoundCloud and Bandcamp links in addition to YouTube. Unknown
+  platforms (Spotify, Vimeo, etc.) are rejected with a clear allowlist hint;
+  nothing is stored.
+- A `tunes.platform` column tracks the source platform; radio streaming and
+  the guard clause are driven by it rather than by `youtube_id`.
+
+### Changed
+- Title fetching and stream resolution now go through a single `playlist.Normalize`
+  + yt-dlp call shape (`--print "%(url)s|%(ext)s"`, no `-g`) that works for
+  all three platforms. The format selector is
+  `bestaudio[protocol!^=m3u8][acodec=aac]/bestaudio[protocol!^=m3u8][ext=m4a][acodec!=alac]/bestaudio[protocol!^=m3u8][acodec=mp3]/bestaudio/best`.
+
+### Fixed
+- **SoundCloud radio playback**: some SoundCloud tracks resolve to HLS
+  (`…/playlist.m3u8`, `application/vnd.apple.mpegurl`), which Chromium/Firefox
+  cannot decode. The stream selector now excludes m3u8 protocols (`!^=m3u8`)
+  so the radio falls back to the progressive mp3 and plays everywhere.
+
+### Known caveats
+- Some SoundCloud tracks are DRM-protected and will be rejected at title-fetch
+  time with the yt-dlp error surfaced in the ceremony flash.
+- Bandcamp ALAC is avoided via the explicit `acodec=aac` clause in the format
+  selector; without it, yt-dlp picks `falac` which is a Chromium risk.
+- SoundCloud tracks offering HLS only will not play in Chromium/Firefox.
+
 ## [1.0.3] - 2026-09-15
 
 ### Added

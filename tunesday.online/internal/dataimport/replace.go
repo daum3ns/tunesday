@@ -11,14 +11,20 @@ import (
 	"tunesday/tunesday.online/internal/store"
 )
 
-// insertTuneTx normalizes and inserts one tune inside a transaction.
-func insertTuneTx(tx *sql.Tx, teamID string, providerID int64, t core.Tune, yt *playlist.YouTube) error {
+// insertTuneTx normalizes and inserts one tune inside a transaction. The file
+// is authoritative for content: a link that cannot be normalized is still
+// stored (with platform ”) so the team keeps its history, but it has no
+// playable stream.
+func insertTuneTx(tx *sql.Tx, teamID string, providerID int64, t core.Tune) error {
 	ytID := t.ID
 	link := t.Link
-	if ytID == "" && link != "" {
-		clean := playlist.StripTrackingParams(link)
-		if id, ok := yt.NormalizeYouTubeID(clean); ok {
-			ytID = id
+	platform := ""
+	if link != "" {
+		if pl, ok := playlist.Normalize(link); ok {
+			platform = pl.Platform
+			if ytID == "" {
+				ytID = pl.ID
+			}
 		}
 	}
 	title := t.Name
@@ -26,9 +32,9 @@ func insertTuneTx(tx *sql.Tx, teamID string, providerID int64, t core.Tune, yt *
 		title = link
 	}
 	_, err := tx.Exec(
-		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		teamID, title, link, ytID, providerID, store.FormatTime(t.AddedAt),
+		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at, platform)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		teamID, title, link, ytID, providerID, store.FormatTime(t.AddedAt), platform,
 	)
 	return err
 }
@@ -124,7 +130,6 @@ func ReplaceTeam(database *db.DB, teamID string, data *core.Data) (*ReplaceResul
 		desired[name] = true
 	}
 
-	yt := playlist.NewYouTube()
 	nameToID := map[string]int64{}
 	for _, name := range ProviderNames(data) {
 		wantDisabled := data.Disabled[name]
@@ -166,7 +171,7 @@ func ReplaceTeam(database *db.DB, teamID string, data *core.Data) (*ReplaceResul
 		if !ok {
 			return nil, fmt.Errorf("tune %q has unknown provider %q", t.Name, t.Provider)
 		}
-		if err := insertTuneTx(tx, teamID, pid, t, yt); err != nil {
+		if err := insertTuneTx(tx, teamID, pid, t); err != nil {
 			return nil, fmt.Errorf("insert tune: %w", err)
 		}
 		res.TunesImported++

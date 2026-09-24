@@ -12,8 +12,9 @@ Single-test shortcut: `go test -v -run TestName ./tunesday.online/internal/packa
 ## Key facts
 - **Go 1.26+** required (see `go.mod`).
 - **Data file**: `tunesday.json` in CWD (gitignored). Used for web import only.
-- **YouTube title fetch** uses `github.com/kkdai/youtube/v2` — no API key needed. Accepts `watch`, `youtu.be`, `/shorts/`, `music.youtube.com` URLs.
-- **Radio stream** uses `yt-dlp` (`TUNESDAY_ONLINE_YTDLP_PATH` env override). Browser plays audio directly from Google CDN (URL-return JSON, no server proxy).
+- **Supported tune sources** (allowlist): YouTube, SoundCloud, Bandcamp. `playlist.Normalize` returns a `playlist.Media{Platform, URL, ID}`; anything else is denied with a clear error. Quiz remains YouTube-only.
+- **Title fetching**: YouTube uses `github.com/kkdai/youtube/v2` (no API key); SoundCloud/Bandcamp go through yt-dlp (knocked out by a single command shape — `FetchTitle(ctx, link)`). Non-YT YouTube titles require yt-dlp at runtime.
+- **Radio stream** uses `yt-dlp` (`TUNESDAY_ONLINE_YTDLP_PATH` env override). `Resolve` runs a single `--print "%(url)s|%(ext)s"` (no `-g`) with `-f bestaudio[protocol!^=m3u8][acodec=aac]/bestaudio[protocol!^=m3u8][ext=m4a][acodec!=alac]/bestaudio[protocol!^=m3u8][acodec=mp3]/bestaudio/best`. Browser plays audio directly from the CDN (URL-return JSON, no server proxy). `tunes.platform` drives the streamable check.
 - **Auth**: admin email+password; members join via magic links (`/join/{token}`), no passwords.
 - **SQLite** via `modernc.org/sqlite` (CGO-free). In-memory DB needs `SetMaxOpenConns(1)`.
 - **Master admin**: set via `TUNESDAY_MASTER_ADMIN_EMAIL` env var. Bypasses all team membership/admin checks.
@@ -27,7 +28,7 @@ internal/
   web/              — HTTP handlers, templates, static assets, WebSocket endpoints
   store/            — SQLite repositories (users, teams, tunes, ceremonies, quiz, play_stats)
   core/             — Data + Tune structs, provider selection algorithm
-  playlist/         — YouTube URL normalization + title fetching
+  playlist/         — URL normalization + title fetching (YouTube/SoundCloud/Bandcamp)
   stream/           — yt-dlp based audio stream resolver (cached URLs)
   dataimport/       — tunesday.json import + team creation
   radio/            — per-user radio presence manager
@@ -57,6 +58,9 @@ internal/
   changelog and use GitHub-generated notes, and the release is marked prerelease.
 
 ## Known gotchas
+- SoundCloud DRM-protected tracks are rejected at title-fetch time ("This video is DRM protected") — the ceremony flash shows the yt-dlp error, nothing is stored.
+- SoundCloud signed URLs carry a CloudFront `Policy`/`Signature` without `expire=` → cache TTL governs; `Invalidate` on resolve failure covers 403s.
+- Bandcamp prefers ALAC (`falac`) unless asked otherwise → `[acodec=aac]` must stay ahead of the m4a/`[acodec!=alac]` fallback. SoundCloud's AAC is HLS-only → every selector clause must start with `[protocol!^=m3u8]` (browsers can't decode `application/vnd.apple.mpegurl`); tracks that only yield HLS will not play in Chromium/Firefox.
 - Ceremony pool = **connected eligible attendees**, no last-submitter exclusion — repeat winners are handled by the team's Pull-UP voting. Winner picked uniformly at random from the pool (`revealPool` in `ceremony_handlers.go`). The old bottom-half `SelectProvider` in `internal/core` was removed.
 - `requireMember` returns a synthetic admin `TeamMember` for master admin — downstream code must handle this.
 - Ceremony countdown is hardcoded to 5000ms (`ceremony_handlers.go`).

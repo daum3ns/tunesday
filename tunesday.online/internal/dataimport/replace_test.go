@@ -145,6 +145,7 @@ func TestBuildExportRoundTrip(t *testing.T) {
 		Tunes: []core.Tune{
 			{Name: "A", Link: "https://youtu.be/aaaaaaaaaaa", ID: "aaaaaaaaaaa", Provider: "Alain", AddedAt: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)},
 			{Name: "B", Link: "https://youtu.be/bbbbbbbbbbb", ID: "bbbbbbbbbbb", Provider: "Alain", AddedAt: time.Date(2026, 1, 8, 10, 0, 0, 0, time.UTC)},
+			{Name: "C", Link: "https://soundcloud.com/lofi-han/summer-haze", Provider: "Alain", AddedAt: time.Date(2026, 2, 1, 10, 0, 0, 0, time.UTC)},
 		},
 	}
 	created, err := CreateTeam(database, CreateTeamInput{
@@ -159,8 +160,8 @@ func TestBuildExportRoundTrip(t *testing.T) {
 	tunes, _ := store.NewTuneStore(database).ListAllByTeam(created.TeamID)
 	exported := BuildExport(providers, tunes)
 
-	if exported.Participants["Alain"] != 2 {
-		t.Fatalf("expected recalculated count 2 for Alain, got %d", exported.Participants["Alain"])
+	if exported.Participants["Alain"] != 3 {
+		t.Fatalf("expected recalculated count 3 for Alain, got %d", exported.Participants["Alain"])
 	}
 	if _, ok := exported.Participants["Lukas"]; !ok {
 		t.Fatal("expected Lukas present with 0")
@@ -168,8 +169,19 @@ func TestBuildExportRoundTrip(t *testing.T) {
 	if !exported.Disabled["Rolf"] {
 		t.Fatal("expected Rolf disabled in export")
 	}
-	if len(exported.Tunes) != 2 || exported.Tunes[0].Name != "A" {
+	if len(exported.Tunes) != 3 || exported.Tunes[0].Name != "A" {
 		t.Fatalf("unexpected exported tunes: %+v", exported.Tunes)
+	}
+	// Non-YouTube tune keeps an empty ID in the export.
+	for _, tu := range exported.Tunes {
+		if tu.Name == "C" {
+			if tu.ID != "" {
+				t.Fatalf("expected empty id for soundcloud tune, got %q", tu.ID)
+			}
+			if tu.Link != "https://soundcloud.com/lofi-han/summer-haze" {
+				t.Fatalf("expected soundcloud link preserved, got %q", tu.Link)
+			}
+		}
 	}
 
 	// The export must parse cleanly back through Parse.
@@ -181,7 +193,57 @@ func TestBuildExportRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-parse export: %v", err)
 	}
-	if len(reimported.Tunes) != 2 {
-		t.Fatalf("expected 2 tunes after round-trip, got %d", len(reimported.Tunes))
+	if len(reimported.Tunes) != 3 {
+		t.Fatalf("expected 3 tunes after round-trip, got %d", len(reimported.Tunes))
+	}
+
+	// Re-importing the exported payload must restore the platform column.
+	if _, err := ReplaceTeam(database, created.TeamID, reimported); err != nil {
+		t.Fatalf("replace after round-trip: %v", err)
+	}
+	again, _ := store.NewTuneStore(database).ListAllByTeam(created.TeamID)
+	if len(again) != 3 {
+		t.Fatalf("expected 3 tunes after re-import, got %d", len(again))
+	}
+	platformByID := map[string]string{}
+	for _, tu := range again {
+		platformByID[tu.YouTubeID] = tu.Platform
+	}
+	if platformByID["aaaaaaaaaaa"] != "youtube" || platformByID["bbbbbbbbbbb"] != "youtube" {
+		t.Fatalf("expected youtube platform, got %v", platformByID)
+	}
+	for _, tu := range again {
+		if tu.Title == "C" && tu.Platform != "soundcloud" {
+			t.Fatalf("expected soundcloud platform restored, got %q", tu.Platform)
+		}
+	}
+}
+
+func TestImportKeepsUnsupportedLinkWithEmptyPlatform(t *testing.T) {
+	database := setupDB(t)
+
+	data := &core.Data{
+		Participants: map[string]int{"Alain": 0},
+		Tunes: []core.Tune{
+			{Name: "legacy", Link: "https://vimeo.com/12345", Provider: "Alain", AddedAt: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)},
+		},
+	}
+	created, err := CreateTeam(database, CreateTeamInput{
+		AdminUserID: "admin-1", TeamName: "Legacy", Slug: "legacy",
+		AdminProviderName: "Alain", Data: data,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tunes, _ := store.NewTuneStore(database).ListAllByTeam(created.TeamID)
+	if len(tunes) != 1 {
+		t.Fatalf("expected 1 tune, got %d", len(tunes))
+	}
+	if tunes[0].Platform != "" {
+		t.Fatalf("expected empty platform for unsupported link, got %q", tunes[0].Platform)
+	}
+	if tunes[0].Link != "https://vimeo.com/12345" {
+		t.Fatalf("expected original link preserved, got %q", tunes[0].Link)
 	}
 }

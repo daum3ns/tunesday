@@ -128,3 +128,94 @@ func TestRadioStreamResolverFailure(t *testing.T) {
 		t.Fatalf("resolver failure should 502, got %d", res.StatusCode)
 	}
 }
+
+func TestRadioStreamSoundCloudTune(t *testing.T) {
+	h, database, mailer := setupTestHandler(t)
+	defer database.Close()
+
+	var capturedTarget string
+	h.deps.Streams = &capturingResolver{target: &capturedTarget}
+	fm := newFakeMailer()
+	mailer.SendFunc = fm.capture()
+	ts := httptest.NewServer(h.Router())
+	defer ts.Close()
+	server := ts.URL
+
+	admin := registerAndVerify(t, server, fm, "cloud@example.com", "password123")
+	payload := []byte(`{
+      "participants": {"A": 1},
+      "tunes": [
+        {"name": "Cloud Track", "link": "https://soundcloud.com/lofi-han/summer-haze", "provider": "A", "added_at": "2026-01-01T10:00:00Z"}
+      ]
+    }`)
+	res := createTeamWithFile(t, admin, server, map[string]string{
+		"team_name": "Cloud Team", "your_name": "A",
+	}, payload)
+	res.Body.Close()
+
+	team, err := h.deps.Teams.GetBySlug("cloud-team")
+	if err != nil || team == nil {
+		t.Fatal("cloud team missing")
+	}
+	tunes, err := h.deps.Tunes.ListAllByTeam(team.ID)
+	if err != nil || len(tunes) != 1 {
+		t.Fatalf("expected 1 tune, got %d (err %v)", len(tunes), err)
+	}
+	tuneID := tunes[0].ID
+	if tunes[0].Platform != "soundcloud" {
+		t.Fatalf("expected platform soundcloud, got %q", tunes[0].Platform)
+	}
+
+	path := fmt.Sprintf("/teams/cloud-team/radio/stream?tune_id=%d", tuneID)
+	resp := admin.get(server, path)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if capturedTarget != "https://soundcloud.com/lofi-han/summer-haze" {
+		t.Fatalf("resolver received target %q", capturedTarget)
+	}
+}
+
+func TestRadioStreamRejectsNoPlatformTune(t *testing.T) {
+	h, database, mailer := setupTestHandler(t)
+	defer database.Close()
+
+	h.deps.Streams = &fakeStreamResolver{url: "https://unused"}
+	fm := newFakeMailer()
+	mailer.SendFunc = fm.capture()
+	ts := httptest.NewServer(h.Router())
+	defer ts.Close()
+	server := ts.URL
+
+	admin := registerAndVerify(t, server, fm, "nofmt@example.com", "password123")
+	payload := []byte(`{
+      "participants": {"A": 1},
+      "tunes": [
+        {"name": "Bad Link", "link": "https://open.spotify.com/track/abc123", "provider": "A", "added_at": "2026-01-01T10:00:00Z"}
+      ]
+    }`)
+	res := createTeamWithFile(t, admin, server, map[string]string{
+		"team_name": "No Format", "your_name": "A",
+	}, payload)
+	res.Body.Close()
+
+	team, err := h.deps.Teams.GetBySlug("no-format")
+	if err != nil || team == nil {
+		t.Fatal("no-format team missing")
+	}
+	tunes, err := h.deps.Tunes.ListAllByTeam(team.ID)
+	if err != nil || len(tunes) != 1 {
+		t.Fatalf("expected 1 tune, got %d (err %v)", len(tunes), err)
+	}
+	if tunes[0].Platform != "" {
+		t.Fatalf("expected empty platform, got %q", tunes[0].Platform)
+	}
+
+	path := fmt.Sprintf("/teams/no-format/radio/stream?tune_id=%d", tunes[0].ID)
+	resp := admin.get(server, path)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 for no-platform tune, got %d", resp.StatusCode)
+	}
+}

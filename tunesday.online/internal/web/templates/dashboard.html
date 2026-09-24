@@ -57,7 +57,7 @@
                 <span class="terminal-error">no tune registered!</span>
                 {{if or (eq $.Member.ProviderID .WinnerProviderID) (eq $.Member.Role "admin")}}
                 <form method="POST" action="/teams/{{$.Team.Slug}}/ceremonies/{{.Token}}/tune" class="inline-form">
-                    <input type="url" name="link" required placeholder="https://www.youtube.com/watch?v=..." class="attach-input">
+                    <input type="url" name="link" required placeholder="https://www.youtube.com/watch?v=... (YouTube, SoundCloud, Bandcamp)" class="attach-input">
                     <input type="hidden" name="from" value="dashboard">
                     <button type="submit" class="terminal-btn small">provide your tune</button>
                 </form>

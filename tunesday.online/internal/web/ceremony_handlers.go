@@ -13,7 +13,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/gorilla/websocket"
 
-	"tunesday/internal/playlist"
 	"tunesday/tunesday.online/internal/auth"
 	"tunesday/tunesday.online/internal/live"
 	"tunesday/tunesday.online/internal/store"
@@ -532,27 +531,26 @@ func (h *Handler) CeremonyAddTune(w http.ResponseWriter, r *http.Request) {
 	}
 	link := strings.TrimSpace(r.FormValue("link"))
 	if link == "" {
-		redirectFlash(w, r, back, "err", "Paste a YouTube link please.")
+		redirectFlash(w, r, back, "err", "Paste a YouTube, SoundCloud, or Bandcamp link please.")
 		return
 	}
-	link = playlist.StripTrackingParams(link)
-	ytID, ok := h.deps.YT.NormalizeYouTubeID(link)
+	pl, ok := h.deps.Media.Normalize(link)
 	if !ok {
-		redirectFlash(w, r, back, "err", "Only https:// YouTube links are supported.")
+		redirectFlash(w, r, back, "err", "Unsupported link — use YouTube, SoundCloud, or Bandcamp.")
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	title, err := h.deps.YT.FetchTitle(ctx, ytID)
+	title, err := h.deps.Media.FetchTitle(ctx, pl.URL)
 	if err != nil {
 		redirectFlash(w, r, back, "err", "Could not fetch the title: "+err.Error())
 		return
 	}
 
 	res, err := h.deps.DB.Exec(
-		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		team.ID, title, link, ytID, winner.ID, store.FormatTime(time.Now()),
+		`INSERT INTO tunes (team_id, title, link, youtube_id, provider_id, added_at, platform) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		team.ID, title, pl.URL, pl.ID, winner.ID, store.FormatTime(time.Now()), pl.Platform,
 	)
 	if err != nil {
 		redirectFlash(w, r, back, "err", "Could not save the tune.")

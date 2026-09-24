@@ -72,7 +72,7 @@ func main() {
 		Rooms:         live.NewManager(),
 		Radio:         radio.NewManager(),
 		Streams:       stream.NewCached(extractor, 0, 0),
-		YT:            extractor,
+		Media:         extractor,
 	}
 
 	wh, err := web.NewHandler(cfg, deps)
